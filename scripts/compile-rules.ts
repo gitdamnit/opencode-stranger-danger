@@ -101,16 +101,124 @@ function parseGitleaksToml(content: string): TomlRule[] {
     return rules;
 }
 
+/**
+ * Translate the subset of RE2 / PCRE syntax used by gitleaks into plain
+ * JavaScript RegExp source.
+ *
+ * JavaScript has no inline-flag groups, POSIX character classes, or `\z`
+ * anchor, so rules that use them crash at `new RegExp(...)` time. This
+ * function rewrites:
+ *
+ *   - POSIX classes  `[[:alnum:]]` → `[A-Za-z0-9]`
+ *   - `\z`                            → `$`
+ *   - named groups   `(?P<name>…)` / `(?<name>…)` → `(?:…)`
+ *   - inline flags   `(?i:…)`, `(?s:…)`, `(?i)`   → global flags + `(?:…)`
+ *
+ * `(?-i:…)` (disable case-insensitivity for a region) has no JavaScript
+ * equivalent. It is unwrapped to `(?:…)`, so a region that explicitly opted
+ * out of case-insensitivity may be matched case-insensitively when the whole
+ * rule enables the `i` flag. This only widens matching (more coverage, a few
+ * more false positives) and never produces an invalid pattern.
+ */
 function processGitleaksRegex(raw: string): { pattern: string; flags: string } {
-    let pattern = raw;
-    let flags = "g";
+    let pattern = raw
+        .replace(/\[\[:alnum:\]\]/g, "[A-Za-z0-9]")
+        .replace(/\[\[:alpha:\]\]/g, "[A-Za-z]")
+        .replace(/\[\[:digit:\]\]/g, "[0-9]")
+        .replace(/\[\[:xdigit:\]\]/g, "[0-9A-Fa-f]")
+        .replace(/\[\[:space:\]\]/g, "\\s")
+        .replace(/\[\[:word:\]\]/g, "[A-Za-z0-9_]")
+        .replace(/\[\[:upper:\]\]/g, "[A-Z]")
+        .replace(/\[\[:lower:\]\]/g, "[a-z]")
+        .replace(/\[\[:punct:\]\]/g, "[\\x21-\\x2f\\x3a-\\x40\\x5b-\\x60\\x7b-\\x7e]");
 
-    if (pattern.includes("(?i)")) {
-        flags = "gi";
-        pattern = pattern.replace(/\(\?i\)/g, "");
+    let caseInsensitive = false;
+    let dotAll = false;
+    let multiline = false;
+
+    let out = "";
+    let i = 0;
+    const n = pattern.length;
+
+    while (i < n) {
+        const ch = pattern[i];
+
+        // Escapes: translate `\z` (RE2 end-of-string) to `$`.
+        if (ch === "\\") {
+            if (pattern[i + 1] === "z") {
+                out += "$";
+                i += 2;
+                continue;
+            }
+            out += ch + (pattern[i + 1] ?? "");
+            i += 2;
+            continue;
+        }
+
+        // Copy character classes verbatim so their contents are never rewritten.
+        if (ch === "[") {
+            let j = i + 1;
+            if (pattern[j] === "^") j++;
+            if (pattern[j] === "]") j++;
+            while (j < n && pattern[j] !== "]") {
+                if (pattern[j] === "\\") j++;
+                j++;
+            }
+            out += pattern.slice(i, j + 1);
+            i = j + 1;
+            continue;
+        }
+
+        if (ch === "(" && pattern[i + 1] === "?") {
+            const rest = pattern.slice(i);
+
+            // Named groups → non-capturing groups.
+            const named = /^\(\?P<[^>]*>/.exec(rest) ?? /^\(\?<[A-Za-z_][^>]*>/.exec(rest);
+            if (named) {
+                out += "(?:";
+                i += named[0].length;
+                continue;
+            }
+
+            // Lookarounds are supported by JavaScript; pass them through.
+            if (/^\(\?(?:=|!|<=|<!)/.test(rest)) {
+                const len = rest.startsWith("(?<") ? 4 : 3;
+                out += pattern.slice(i, i + len);
+                i += len;
+                continue;
+            }
+
+            if (rest.startsWith("(?:")) {
+                out += "(?:";
+                i += 3;
+                continue;
+            }
+
+            // Inline flag groups: `(?flags)` or `(?flags:…)`.
+            const flagMatch = /^\(\?([a-zA-Z]*)(-?)([a-zA-Z]*)(:|\))/.exec(rest);
+            if (flagMatch) {
+                const enableFlags = flagMatch[1];
+                const closing = flagMatch[4];
+                if (enableFlags.includes("i")) caseInsensitive = true;
+                if (enableFlags.includes("s")) dotAll = true;
+                if (enableFlags.includes("m")) multiline = true;
+                i += flagMatch[0].length;
+                out += closing === ":" ? "(?:" : "";
+                continue;
+            }
+        }
+
+        out += ch;
+        i++;
     }
 
-    pattern = pattern.replace(/\(\?P<[^>]*>/g, "(?:");
+    pattern = out;
+
+    let flags = "g";
+    if (caseInsensitive) flags += "i";
+    if (dotAll) flags += "s";
+    if (multiline) flags += "m";
+
     pattern = pattern.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
     return { pattern, flags };

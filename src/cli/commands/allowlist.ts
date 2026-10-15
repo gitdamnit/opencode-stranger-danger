@@ -1,6 +1,30 @@
-import { loadAllowlist } from "../../engine/allowlist.js";
+import { loadAllowlist, saveAllowlistEntry } from "../../engine/allowlist.js";
+import type { AllowlistEntry } from "../../engine/types.js";
 
-export async function cmdAllowlist(subcommand: string, _positional: string[]): Promise<void> {
+function pickEntry(flags: Record<string, string | boolean>): AllowlistEntry {
+    const entry: AllowlistEntry = {};
+    const str = (v: string | boolean | undefined): string | undefined =>
+        typeof v === "string" && v.length > 0 ? v : undefined;
+
+    const description = str(flags.description);
+    const fingerprint = str(flags.fingerprint);
+    const ruleId = str(flags.ruleId) ?? str(flags["rule-id"]);
+    const path = str(flags.path);
+    const regex = str(flags.regex);
+
+    if (description) entry.description = description;
+    if (fingerprint) entry.fingerprint = fingerprint;
+    if (ruleId) entry.ruleId = ruleId;
+    if (path) entry.path = path;
+    if (regex) entry.regex = regex;
+    return entry;
+}
+
+export async function cmdAllowlist(
+    subcommand: string,
+    _positional: string[],
+    flags: Record<string, string | boolean> = {},
+): Promise<void> {
     if (subcommand === "show") {
         const allowlist = loadAllowlist();
         if (allowlist.entries.length === 0) {
@@ -19,17 +43,27 @@ export async function cmdAllowlist(subcommand: string, _positional: string[]): P
     }
 
     if (subcommand === "add") {
-        console.log("Add allowlist entry. Choose a type:");
-        console.log("  1. By fingerprint");
-        console.log("  2. By rule ID");
-        console.log("  3. By file path");
-        console.log("  4. By regex pattern");
-        console.log("");
-        console.log("Usage examples:");
-        console.log("  sd allowlist add --fingerprint a3f7b2c1 --description \"Known test key\"");
-        console.log("  sd allowlist add --ruleId aws-access-token --description \"Internal AWS account\"");
-        console.log("  sd allowlist add --path \"test/fixtures/*.ts\" --description \"Test fixtures\"");
-        console.log("  sd allowlist add --regex \"EXAMPLE\" --description \"Example values\"");
+        const entry = pickEntry(flags);
+        if (Object.keys(entry).length === 0 || (!entry.fingerprint && !entry.ruleId && !entry.path && !entry.regex)) {
+            console.error("Usage: sd allowlist add --fingerprint <fp> | --ruleId <id> | --path <glob> | --regex <pattern> [--description \"...\"]");
+            process.exit(1);
+        }
+
+        if (entry.regex) {
+            try {
+                new RegExp(entry.regex);
+            } catch (err) {
+                console.error(`Error: invalid --regex pattern: ${err instanceof Error ? err.message : String(err)}`);
+                process.exit(1);
+            }
+        }
+        if (entry.fingerprint && !/^[a-f0-9]{8}$/i.test(entry.fingerprint)) {
+            console.error("Error: --fingerprint must be 8 hexadecimal characters.");
+            process.exit(1);
+        }
+
+        saveAllowlistEntry(entry);
+        console.log("Allowlist entry added.");
         return;
     }
 

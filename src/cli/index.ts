@@ -6,6 +6,7 @@ import { cmdRedact } from "./commands/redact.js";
 import { cmdAudit } from "./commands/audit.js";
 import { cmdRules } from "./commands/rules.js";
 import { cmdAllowlist } from "./commands/allowlist.js";
+import { VERSION } from "../shared/version.js";
 
 async function main(): Promise<void> {
     const { command, positional, flags } = parseArgs(process.argv);
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
             await cmdScan(positional, flags);
             break;
         case "redact":
-            await cmdRedact(positional);
+            await cmdRedact(positional, flags);
             break;
         case "audit":
             await cmdAudit();
@@ -29,10 +30,10 @@ async function main(): Promise<void> {
             await cmdRules();
             break;
         case "allowlist":
-            await cmdAllowlist(positional[0] || "show", positional.slice(1));
+            await cmdAllowlist(positional[0] || "show", positional.slice(1), flags);
             break;
         case "version":
-            console.log("strangerDanger v0.1.0");
+            console.log(`strangerDanger v${VERSION}`);
             break;
         default:
             console.error(`Unknown command: ${command}`);

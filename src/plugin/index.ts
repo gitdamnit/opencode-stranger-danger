@@ -1,115 +1,123 @@
-import { type Plugin, tool } from "@opencode-ai/plugin";
-import { z } from "zod";
-import { scanAndRedact } from "../engine/scanner.js";
-import { getAuditPath, readAuditLog } from "../engine/audit.js";
-import { loadAllowlist, saveAllowlistEntry } from "../engine/allowlist.js";
-import { NAMED_RULES, ENTROPY_RULES, CLEAN_ROOM_RULES } from "../engine/rules.js";
+import { Plugin } from "@opencode/plugin";
+import { resolveAuditPath } from "../engine/audit.js";
 import { handleLayer1 } from "./layer1.js";
-import { handleLayer2Compaction } from "./layer2-compaction.js";
-import { handleLayer2Message } from "./layer2-message.js";
 import { handleLayer3 } from "./layer3.js";
-import type { Finding } from "../engine/types.js";
+import { handlePrompt, handleContext, handleMessageEvent } from "./layer2-message.js";
+import { handleCompaction } from "./layer2-compaction.js";
+import { sdStatus, sdAudit, sdAllowlistAdd, sdAllowlistShow, sdScan } from "./tools.js";
+import type { AuditContext } from "./redact.js";
 
-export const strangerDanger: Plugin = async (_ctx) => {
-    const allRules = [...NAMED_RULES, ...CLEAN_ROOM_RULES, ...ENTROPY_RULES];
+/**
+ * strangerDanger — OpenCode V2 plugin.
+ *
+ * Protection boundaries (all supported V2 APIs):
+ *   - `session.prompt`      → redact the incoming user prompt before admission.
+ *   - `tool.execute.after`  → redact tool results (read/bash/grep/fetch/...).
+ *   - `session.context`     → redact the assembled model request (system + messages).
+ *   - `session.compaction`  → redact the transcript being summarized.
+ *   - `tool.execute.before` → read-only detection/audit for file tools (never writes).
+ *
+ * The V1 `event` callback is migrated to `ctx.event.subscribe()` and is used for
+ * detection/audit only: the event stream is observational and cannot prevent an
+ * already-admitted request from being transmitted.
+ *
+ * Known limitation: provider-native WebSocket traffic that bypasses the
+ * session HTTP pipeline is not covered by these hooks. Everything routed
+ * through the session model-request pipeline is.
+ */
+export const strangerDanger = Plugin.define({
+    id: "gitdamnit.stranger-danger",
+    async setup(ctx) {
+        const auditPath = resolveAuditPath({ directory: ctx.location?.directory });
+        const audit: AuditContext = { auditPath };
 
-    return {
-        "tool.execute.before": handleLayer1,
-        "experimental.session.compacting": handleLayer2Compaction,
-        event: handleLayer2Message,
-        "tool.execute.after": handleLayer3,
-
-        tool: {
-            sd_status: tool({
+        // --- Tools ---------------------------------------------------------
+        await ctx.tool.transform((editor) => {
+            editor.add({
+                name: "sd_status",
                 description: "Show strangerDanger status — rule count, findings this session, audit log path",
-                args: {},
-                async execute() {
-                    const ruleCount = allRules.length;
-                    const auditPath = getAuditPath();
-                    let findingCount = 0;
-                    try {
-                        const log = readAuditLog();
-                        findingCount = log.split("\n").filter((l) => l.trim()).length;
-                    } catch {
-                        // Audit log may not exist yet
-                    }
-                    return `strangerDanger v0.1.0\nRules: ${ruleCount}\nFindings this session: ${findingCount}\nAudit log: ${auditPath}`;
-                },
-            }),
-
-            sd_audit: tool({
-                description: "Show audit log for current session — all redactions made, with timestamps and rule IDs",
-                args: {},
-                async execute() {
-                    try {
-                        const log = readAuditLog();
-                        if (!log.trim()) return "No audit entries yet.";
-                        const lines = log.trim().split("\n");
-                        const entries = lines.map((l) => {
-                            try {
-                                const entry = JSON.parse(l);
-                                return `[${entry.timestamp}] ${entry.ruleId} — fingerprint: ${entry.fingerprint} — source: ${entry.source}`;
-                            } catch {
-                                return l;
-                            }
-                        });
-                        return entries.join("\n");
-                    } catch {
-                        return "Audit log not found.";
-                    }
-                },
-            }),
-
-            sd_allowlist_add: tool({
+                input: { type: "object", properties: {}, additionalProperties: false } as any,
+                execute: async () => ({ content: sdStatus({ auditPath }) }),
+            });
+            editor.add({
+                name: "sd_audit",
+                description: "Show the strangerDanger audit log — redactions made, with timestamps and rule IDs (no raw secrets)",
+                input: { type: "object", properties: {}, additionalProperties: false } as any,
+                execute: async () => ({ content: sdAudit({ auditPath }) }),
+            });
+            editor.add({
+                name: "sd_allowlist_add",
                 description: "Add an entry to the allowlist — by fingerprint, ruleId, path, or regex",
-                args: {
-                    description: z.string().optional(),
-                    fingerprint: z.string().optional(),
-                    ruleId: z.string().optional(),
-                    path: z.string().optional(),
-                    regex: z.string().optional(),
-                },
-                async execute(args) {
-                    saveAllowlistEntry({
-                        description: args.description,
-                        fingerprint: args.fingerprint,
-                        ruleId: args.ruleId,
-                        path: args.path,
-                        regex: args.regex,
-                    });
-                    return "Allowlist entry added.";
-                },
-            }),
-
-            sd_allowlist_show: tool({
+                input: {
+                    type: "object",
+                    properties: {
+                        description: { type: "string" },
+                        fingerprint: { type: "string" },
+                        ruleId: { type: "string" },
+                        path: { type: "string" },
+                        regex: { type: "string" },
+                    },
+                    additionalProperties: false,
+                } as any,
+                execute: async (input: any) => ({ content: sdAllowlistAdd(input ?? {}) }),
+            });
+            editor.add({
+                name: "sd_allowlist_show",
                 description: "Show current allowlist entries",
-                args: {},
-                async execute() {
-                    const allowlist = loadAllowlist();
-                    if (allowlist.entries.length === 0) return "No allowlist entries.";
-                    return allowlist.entries.map((e, i) =>
-                        `${i + 1}. ${e.description || "(no description)"} | fingerprint: ${e.fingerprint || "—"} | ruleId: ${e.ruleId || "—"} | path: ${e.path || "—"} | regex: ${e.regex || "—"}`,
-                    ).join("\n");
-                },
-            }),
+                input: { type: "object", properties: {}, additionalProperties: false } as any,
+                execute: async () => ({ content: sdAllowlistShow() }),
+            });
+            editor.add({
+                name: "sd_scan",
+                description: "Manually scan a file or string against all rules — returns secret-free findings metadata",
+                input: {
+                    type: "object",
+                    properties: {
+                        content: { type: "string" },
+                        source: { type: "string", enum: ["file", "context", "output", "message"] },
+                    },
+                    required: ["content"],
+                    additionalProperties: false,
+                } as any,
+                execute: async (input: any) => ({ content: sdScan(input) }),
+            });
+        });
 
-            sd_scan: tool({
-                description: "Manually scan a file or string against all rules — useful for testing",
-                args: {
-                    content: z.string(),
-                    source: z.enum(["file", "context", "output", "message"]).optional(),
-                },
-                async execute(args) {
-                    const src = args.source || "file";
-                    const { findings } = scanAndRedact(args.content, src as Finding["source"]);
-                    if (findings.length === 0) return "No secrets detected.";
-                    return findings.map((f) =>
-                        `${f.ruleId}: ${f.description}\n  Redacted: ${f.redacted}\n  Offset: ${f.offset}`,
-                    ).join("\n\n");
-                },
-            }),
-        },
-    };
-};
+        // --- Hooks ---------------------------------------------------------
+        await ctx.tool.hook("execute.before", (event) =>
+            handleLayer1({ tool: event.tool, sessionID: String(event.sessionID), input: event.input }, audit),
+        );
+
+        await ctx.tool.hook("execute.after", (event) =>
+            handleLayer3(event as any, audit),
+        );
+
+        await ctx.session.hook("prompt", (event) =>
+            handlePrompt({ sessionID: String(event.sessionID), prompt: event.prompt as any }, audit),
+        );
+
+        await ctx.session.hook("context", (event) =>
+            handleContext({ sessionID: String(event.sessionID), system: event.system, messages: event.messages }, audit),
+        );
+
+        await ctx.session.hook("compaction", (event) =>
+            handleCompaction({ sessionID: String(event.sessionID), messages: event.messages, result: event.result as any }, audit),
+        );
+
+        // --- Event subscription (detection/audit only) ---------------------
+        const controller = new AbortController();
+        void (async () => {
+            try {
+                for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+                    handleMessageEvent(event, audit);
+                }
+            } catch {
+                // Stream ended or aborted.
+            }
+        })();
+
+        return () => controller.abort();
+    },
+});
 
 export default strangerDanger;

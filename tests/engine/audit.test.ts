@@ -241,26 +241,25 @@ describe("audit — getAuditPath", () => {
 });
 
 describe("audit — default path behavior", () => {
-    const defaultPath = ".opencode/state/strangerdanger-audit.jsonl";
+    test("writes to the configured default path when no explicit path is passed", () => {
+        const dir = "/tmp/strangerdanger-audit-default-test";
+        const defaultPath = path.join(dir, ".opencode", "state", "strangerdanger-audit.jsonl");
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
 
-    test("writes to default path when custom path is not set", () => {
-        // Reset to default
         setAuditPath(defaultPath);
-
-        const cleanupPaths = [
-            ".opencode/state/strangerdanger-audit.jsonl",
-            ".opencode",
-            ".opencode/state",
-        ];
-
-        // Clean up
-        try { fs.rmSync(".opencode", { recursive: true, force: true }); } catch {}
-
         writeAudit({ ruleId: "default-test", source: "file", description: "Default path test", fingerprint: "abcd1234" });
-
         assert.ok(fs.existsSync(defaultPath));
 
-        // Clean up
-        try { fs.rmSync(".opencode", { recursive: true, force: true }); } catch {}
+        // Audit files must be owner-only.
+        const mode = fs.statSync(defaultPath).mode & 0o777;
+        assert.strictEqual(mode, 0o600);
+
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    });
+
+    test("resolveAuditPath is project-scoped under a project directory", async () => {
+        const { resolveAuditPath } = await import("../../src/engine/audit.js");
+        const resolved = resolveAuditPath({ directory: "/tmp/some-project" });
+        assert.strictEqual(resolved, "/tmp/some-project/.opencode/state/strangerdanger-audit.jsonl");
     });
 });

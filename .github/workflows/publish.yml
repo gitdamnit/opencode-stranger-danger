@@ -18,31 +18,39 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Setup Node for npm publishing
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
           registry-url: https://registry.npmjs.org/
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
+
+      - name: Compile detection rules from TOML
+        run: npm run build:rules
 
       - name: Typecheck
-        run: bun run typecheck --if-present
+        run: npm run typecheck
 
       - name: Lint
-        run: bun run lint --if-present
+        run: npm run lint
 
-      - name: Test
-        run: bun test
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Security regression tests
+        run: npm run test:security
 
       - name: Build
-        run: bun run build --if-present
+        run: npm run build
+
+      - name: Package validation
+        run: npm run verify:package
 
       - name: Publish to npm
         run: npm publish --provenance --access public

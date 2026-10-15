@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
-import { statSync } from "node:fs";
-import { writeFileSync } from "node:fs";
-import { scanAndRedact } from "../engine/scanner.js";
-import { writeAuditBatch } from "../engine/audit.js";
-import type { Finding } from "../engine/types.js";
+import { readFileSync, statSync } from "node:fs";
+import { scan } from "../engine/scanner.js";
+import { loadAllowlist, filterByAllowlist } from "../engine/allowlist.js";
+import { recordFindings, type AuditContext } from "./redact.js";
 
+/**
+ * A file larger than this is not inspected here. The tool-result boundary
+ * (layer 3) still handles it with bounded, chunk-safe scanning.
+ */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function isBinary(content: Buffer): boolean {
@@ -14,25 +16,36 @@ function isBinary(content: Buffer): boolean {
     return false;
 }
 
-function isSensitiveDotEnvPath(filePath: string): boolean {
-    const normalized = filePath.replace(/\\/g, "/");
-    if (/(^|\/)\.env\.example$/.test(normalized)) return false;
-    return /(^|\/)\.env($|\.)/.test(normalized);
-}
+export type Layer1Event = {
+    tool: string;
+    sessionID?: string;
+    input?: unknown;
+};
 
-export async function handleLayer1(
-    input: { tool: string; sessionID: string; callID: string },
-    output: { args: any },
-): Promise<void> {
-    const filePath = output.args?.filePath as string | undefined;
-    if (!filePath) return;
-
+/**
+ * Pre-execution inspection for file-oriented tools.
+ *
+ * IMPORTANT: this hook is strictly read-only. Reading a file must never modify
+ * its contents. Earlier versions rewrote the file on disk when they detected a
+ * secret, which silently corrupted the user's working tree. This hook now only
+ * *detects* secrets and records an audit entry. Redaction of what the model
+ * actually sees happens at the supported V2 boundaries:
+ *
+ *   - `ctx.tool.hook("execute.after")` rewrites the tool result (layer 3).
+ *   - `ctx.session.hook("context")` rewrites the assembled model request.
+ *
+ * Files that cannot be safely inspected (non-regular files such as FIFOs or
+ * device nodes, binaries, or very large files) are skipped here and left to the
+ * result/context boundaries, so a `read` never blocks on a named pipe.
+ */
+export async function handleLayer1(event: Layer1Event, ctx: AuditContext): Promise<void> {
     try {
-        if (input.tool !== "read" && input.tool !== "edit" && input.tool !== "write") {
-            return;
-        }
+        const tool = event.tool;
+        if (tool !== "read" && tool !== "edit" && tool !== "write") return;
 
-        if (isSensitiveDotEnvPath(filePath)) return;
+        const input = event.input as { filePath?: unknown } | undefined;
+        const filePath = input?.filePath;
+        if (typeof filePath !== "string" || filePath.length === 0) return;
 
         let stats;
         try {
@@ -40,29 +53,18 @@ export async function handleLayer1(
         } catch {
             return;
         }
+        // Only regular files: never read FIFOs, sockets, or devices (would block).
+        if (!stats.isFile()) return;
         if (stats.size > MAX_FILE_SIZE) return;
 
         const raw = readFileSync(filePath);
         if (isBinary(raw)) return;
 
         const content = raw.toString("utf8");
-        const { redacted, findings } = scanAndRedact(content, "file", filePath);
-
-        if (findings.length > 0) {
-            const auditEntries = findings.map((f: Finding) => ({
-                timestamp: new Date().toISOString(),
-                source: "file",
-                ruleId: f.ruleId,
-                description: f.description,
-                fingerprint: f.redacted.match(/:([a-f0-9]{8})\]/)?.[1] || "",
-            }));
-            writeAuditBatch(auditEntries);
-
-            if (redacted !== content) {
-                writeFileSync(filePath, redacted, "utf8");
-            }
-        }
+        const findings = filterByAllowlist(scan(content, "file", filePath), loadAllowlist());
+        recordFindings(findings, "file", { ...ctx, sessionId: event.sessionID }, filePath);
+        // Intentionally no writeFileSync. The original file is never modified.
     } catch {
-        // Degrade gracefully — never block tool execution
+        // Degrade gracefully — never block tool execution.
     }
 }

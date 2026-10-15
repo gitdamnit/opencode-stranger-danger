@@ -1,6 +1,6 @@
-import { readFileSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, statSync, readdirSync, lstatSync } from "node:fs";
 import { join, extname } from "node:path";
-import { scanAndRedact } from "../../engine/scanner.js";
+import { scanAndRedactBounded, toSafeFinding, type SafeFinding } from "../../engine/scanner.js";
 import type { Finding } from "../../engine/types.js";
 
 const SKIP_EXTENSIONS = new Set([
@@ -12,6 +12,11 @@ const SKIP_EXTENSIONS = new Set([
     ".lock", ".lockb",
 ]);
 
+const SKIP_DIRECTORIES = new Set(["node_modules", ".git"]);
+
+/** Refuse to slurp absurdly large files into memory; report them explicitly. */
+const MAX_READ_BYTES = 64 * 1024 * 1024;
+
 function isBinary(content: Buffer): boolean {
     for (let i = 0; i < Math.min(content.length, 8192); i++) {
         if (content[i] === 0) return true;
@@ -19,40 +24,96 @@ function isBinary(content: Buffer): boolean {
     return false;
 }
 
-function scanFile(filePath: string, source: string): { findings: Finding[]; redacted: string } {
-    const raw = readFileSync(filePath);
-    if (isBinary(raw)) return { findings: [], redacted: "" };
-    const content = raw.toString("utf8");
-    return scanAndRedact(content, source as Finding["source"], filePath);
+function isRegularFile(filePath: string): boolean {
+    try {
+        return lstatSync(filePath).isFile();
+    } catch {
+        return false;
+    }
 }
 
-function scanDirectory(dirPath: string, source: string): Finding[] {
-    const allFindings: Finding[] = [];
+type ScanOutcome = { findings: SafeFinding[]; skipped?: string };
 
-    function walk(dir: string) {
-        const entries = readdirSync(dir, { withFileTypes: true });
+function scanText(text: string, source: string, filePath?: string): ScanOutcome {
+    const { findings, complete, policy } = scanAndRedactBounded(text, source as Finding["source"], filePath);
+    const safe = findings.map((f) => toSafeFinding(f, text));
+    if (!complete) {
+        return { findings: safe, skipped: `${filePath ?? "<stdin>"}: could not be fully inspected (${policy})` };
+    }
+    return { findings: safe };
+}
+
+function scanFile(filePath: string, source: string): ScanOutcome {
+    if (!isRegularFile(filePath)) {
+        return { findings: [], skipped: `${filePath}: not a regular file` };
+    }
+    let size = 0;
+    try {
+        size = statSync(filePath).size;
+    } catch {
+        return { findings: [], skipped: `${filePath}: unreadable` };
+    }
+    if (size > MAX_READ_BYTES) {
+        return { findings: [], skipped: `${filePath}: exceeds ${MAX_READ_BYTES} byte read limit` };
+    }
+
+    const raw = readFileSync(filePath);
+    if (isBinary(raw)) return { findings: [] };
+    return scanText(raw.toString("utf8"), source, filePath);
+}
+
+function scanDirectory(dirPath: string, source: string): { findings: SafeFinding[]; skipped: string[] } {
+    const allFindings: SafeFinding[] = [];
+    const skipped: string[] = [];
+
+    function walk(dir: string, depth: number): void {
+        if (depth > 64) return;
+        let entries;
+        try {
+            entries = readdirSync(dir, { withFileTypes: true });
+        } catch {
+            skipped.push(`${dir}: unreadable directory`);
+            return;
+        }
         for (const entry of entries) {
             const fullPath = join(dir, entry.name);
-            if (entry.name === "node_modules" || entry.name === ".git") continue;
+            // Never follow symlinks while walking: avoids cycles and traversal.
+            if (entry.isSymbolicLink()) continue;
             if (entry.isDirectory()) {
-                walk(fullPath);
+                if (SKIP_DIRECTORIES.has(entry.name)) continue;
+                walk(fullPath, depth + 1);
             } else if (entry.isFile()) {
                 const ext = extname(entry.name).toLowerCase();
                 if (SKIP_EXTENSIONS.has(ext)) continue;
-                try {
-                    const { findings } = scanFile(fullPath, source);
-                    for (const f of findings) {
-                        allFindings.push({ ...f, match: `${fullPath}: ${f.match}` });
-                    }
-                } catch {
-                    // Skip files we can't read
-                }
+                const outcome = scanFile(fullPath, source);
+                allFindings.push(...outcome.findings);
+                if (outcome.skipped) skipped.push(outcome.skipped);
             }
         }
     }
 
-    walk(dirPath);
-    return allFindings;
+    walk(dirPath, 0);
+    return { findings: allFindings, skipped };
+}
+
+function printHuman(target: string, findings: SafeFinding[], skipped: string[]): void {
+    if (findings.length === 0 && skipped.length === 0) {
+        console.log(`No secrets detected in ${target}.`);
+        return;
+    }
+    if (findings.length > 0) {
+        console.log(`Found ${findings.length} secret(s) in ${target}:`);
+        for (const f of findings) {
+            const where = f.filePath ? `${f.filePath}${f.line ? `:${f.line}:${(f.column ?? 0) + 1}` : ""}` : f.source;
+            console.log(`  ${f.ruleId}: ${f.description}`);
+            console.log(`    Location: ${where}`);
+            console.log(`    Fingerprint: ${f.fingerprint}`);
+            console.log(`    Redaction: ${f.redaction}`);
+        }
+    } else {
+        console.log(`No secrets detected in ${target}.`);
+    }
+    for (const s of skipped) console.error(`Warning: ${s}`);
 }
 
 export async function cmdScan(positional: string[], flags: Record<string, string | boolean>): Promise<void> {
@@ -71,41 +132,34 @@ export async function cmdScan(positional: string[], flags: Record<string, string
         for await (const chunk of process.stdin) {
             input += chunk.toString();
         }
-        const { findings } = scanAndRedact(input, source as Finding["source"]);
+        const outcome = scanText(input, source);
         if (asJson) {
-            console.log(JSON.stringify(findings, null, 2));
-        } else if (findings.length === 0) {
-            console.log("No secrets detected.");
-        } else {
-            for (const f of findings) {
-                console.log(`${f.ruleId}: ${f.description}`);
-                console.log(`  Redacted: ${f.redacted}`);
-            }
+            console.log(JSON.stringify({ findings: outcome.findings, skipped: outcome.skipped ? [outcome.skipped] : [] }, null, 2));
+            return;
         }
+        printHuman("<stdin>", outcome.findings, outcome.skipped ? [outcome.skipped] : []);
         return;
     }
 
     try {
         const stats = statSync(target);
-        let findings: Finding[];
+        let findings: SafeFinding[];
+        let skipped: string[] = [];
 
         if (stats.isDirectory()) {
-            findings = scanDirectory(target, source);
-        } else {
-            const result = scanFile(target, source);
+            const result = scanDirectory(target, source);
             findings = result.findings;
+            skipped = result.skipped;
+        } else {
+            const outcome = scanFile(target, source);
+            findings = outcome.findings;
+            if (outcome.skipped) skipped = [outcome.skipped];
         }
 
         if (asJson) {
-            console.log(JSON.stringify(findings, null, 2));
-        } else if (findings.length === 0) {
-            console.log(`No secrets detected in ${target}.`);
+            console.log(JSON.stringify({ findings, skipped }, null, 2));
         } else {
-            console.log(`Found ${findings.length} secret(s) in ${target}:`);
-            for (const f of findings) {
-                console.log(`  ${f.ruleId}: ${f.description}`);
-                console.log(`    Redacted: ${f.redacted}`);
-            }
+            printHuman(target, findings, skipped);
         }
     } catch (err) {
         console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);

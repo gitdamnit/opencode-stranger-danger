@@ -5,3 +5,6 @@ coverage/
 .env.*
 *.log
 .DS_Store
+
+# strangerDanger runtime state (audit logs, session data)
+.opencode/state/

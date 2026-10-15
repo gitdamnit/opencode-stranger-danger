@@ -9,6 +9,7 @@ import { cmdAllowlist } from "../../src/cli/commands/allowlist.js";
 import { scanAndRedact } from "../../src/engine/scanner.js";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 describe("cli — cmdScan", () => {
     test("scan detects AWS key in string", () => {
@@ -67,62 +68,88 @@ test("scan with source 'message' works", () => {
 });
 
 describe("cli — cmdRedact", () => {
-    test("redact creates backup and modifies file", async () => {
-        const tmpDir = "/tmp/sd-redact-test";
+    test("redact modifies the file atomically and writes NO plaintext backup by default", async () => {
+        const { cmdRedact } = await import("../../src/cli/commands/redact.js");
+        const { setAuditPath } = await import("../../src/engine/audit.js");
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-redact-"));
         const filePath = path.join(tmpDir, "config.ts");
-
         try {
-            fs.mkdirSync(tmpDir, { recursive: true });
+            setAuditPath(path.join(tmpDir, "audit.jsonl"));
             fs.writeFileSync(filePath, 'const key = "AKIAIOSFODNN7EXAMPLE";');
 
-            // Simulate what cmdRedact does
-            const { readFileSync, writeFileSync, copyFileSync, existsSync } = await import("node:fs");
-            const { scanAndRedact } = await import("../../src/engine/scanner.js");
+            await cmdRedact([filePath], {});
 
-            const content = readFileSync(filePath, "utf8");
-            const { redacted, findings } = scanAndRedact(content, "file");
-
-            if (findings.length > 0) {
-                const backupPath = filePath + ".backup";
-                copyFileSync(filePath, backupPath);
-                writeFileSync(filePath, redacted, "utf8");
-
-                assert.ok(existsSync(backupPath));
-                assert.strictEqual(readFileSync(backupPath, "utf8"), content);
-                assert.ok(!readFileSync(filePath, "utf8").includes("AKIAIOSFODNN7EXAMPLE"));
-                assert.ok(readFileSync(filePath, "utf8").includes("[REDACTED:"));
-
-                // Cleanup
-                try { fs.unlinkSync(backupPath); } catch {}
-            }
+            const after = fs.readFileSync(filePath, "utf8");
+            assert.ok(!after.includes("AKIAIOSFODNN7EXAMPLE"));
+            assert.ok(after.includes("[REDACTED:"));
+            assert.ok(!fs.existsSync(filePath + ".backup"), "no plaintext .backup in the working tree");
+            assert.ok(!fs.existsSync(filePath + ".bak"));
         } finally {
             try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
         }
     });
 
-    test("redact skips file with no secrets", async () => {
-        const tmpDir = "/tmp/sd-redact-test-clean";
-        const filePath = path.join(tmpDir, "clean.ts");
-
+    test("redact --backup-dir writes a permission-restricted backup outside the working tree", async () => {
+        const { cmdRedact } = await import("../../src/cli/commands/redact.js");
+        const { setAuditPath } = await import("../../src/engine/audit.js");
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-redact-"));
+        const backupDir = path.join(tmpDir, "outside", "backups");
+        const filePath = path.join(tmpDir, "config.ts");
         try {
-            fs.mkdirSync(tmpDir, { recursive: true });
-            const originalContent = "const x = 42;";
-            fs.writeFileSync(filePath, originalContent);
+            setAuditPath(path.join(tmpDir, "audit.jsonl"));
+            const original = 'const key = "AKIAIOSFODNN7EXAMPLE";';
+            fs.writeFileSync(filePath, original);
 
-            const { scanAndRedact } = await import("../../src/engine/scanner.js");
-            const { readFileSync, existsSync } = await import("node:fs");
+            await cmdRedact([filePath], { "backup-dir": backupDir });
 
-            const content = readFileSync(filePath, "utf8");
-            const { redacted, findings } = scanAndRedact(content, "file");
-
-            if (findings.length === 0) {
-                // No backup created, no changes
-                assert.strictEqual(redacted, content);
-                assert.ok(!existsSync(filePath + ".backup"));
-            }
+            const backups = fs.readdirSync(backupDir);
+            assert.ok(backups.length >= 1, "a backup should exist in the requested directory");
+            const backupContent = fs.readFileSync(path.join(backupDir, backups[0]), "utf8");
+            assert.strictEqual(backupContent, original, "backup preserves the original content");
+            const mode = fs.statSync(path.join(backupDir, backups[0])).mode & 0o777;
+            assert.strictEqual(mode, 0o600, "backup must be owner-only");
         } finally {
             try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
         }
+    });
+
+    test("redact leaves a clean file unchanged", async () => {
+        const { cmdRedact } = await import("../../src/cli/commands/redact.js");
+        const { setAuditPath } = await import("../../src/engine/audit.js");
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-redact-"));
+        const filePath = path.join(tmpDir, "clean.ts");
+        try {
+            setAuditPath(path.join(tmpDir, "audit.jsonl"));
+            fs.writeFileSync(filePath, "const x = 42;");
+            await cmdRedact([filePath], {});
+            assert.strictEqual(fs.readFileSync(filePath, "utf8"), "const x = 42;");
+        } finally {
+            try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        }
+    });
+});
+
+describe("cli — cmdScan JSON output is secret-free", () => {
+    test("--json output never contains the raw secret", async () => {
+        const { cmdScan } = await import("../../src/cli/commands/scan.js");
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-scan-"));
+        const filePath = path.join(tmpDir, "config.ts");
+        const secret = "AKIAIOSFODNN7EXAMPLE";
+        const logs: string[] = [];
+        const original = console.log;
+        try {
+            fs.writeFileSync(filePath, `const key = "${secret}";`);
+            console.log = (...args: unknown[]) => { logs.push(args.join(" ")); };
+            await cmdScan([filePath], { json: true });
+        } finally {
+            console.log = original;
+            try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        }
+        const output = logs.join("\n");
+        const parsed = JSON.parse(output);
+        assert.ok(Array.isArray(parsed.findings) && parsed.findings.length >= 1);
+        assert.ok(!output.includes(secret), "JSON output must not contain the raw secret");
+        assert.ok(parsed.findings[0].fingerprint, "safe metadata should include a fingerprint");
     });
 });
 

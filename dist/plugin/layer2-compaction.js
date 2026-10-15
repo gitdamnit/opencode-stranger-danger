@@ -1,28 +1,23 @@
-import { scanAndRedact } from "../engine/scanner.js";
-import { writeAuditBatch } from "../engine/audit.js";
-export async function handleLayer2Compaction(_input, output) {
+import { redactText } from "./redact.js";
+import { redactMessages } from "./layer2-message.js";
+/**
+ * `ctx.session.hook("compaction")` — redact the transcript that is about to be
+ * summarized in a checkpoint compaction, and, when the plugin supplies its own
+ * summary via `event.result`, the summary text as well.
+ *
+ * Without this, a secret that survived in earlier history would be copied into
+ * the compaction summary and re-injected into every later request.
+ */
+export async function handleCompaction(event, ctx) {
     try {
-        if (!output.context || output.context.length === 0)
-            return;
-        const allFindings = [];
-        for (let i = 0; i < output.context.length; i++) {
-            const { redacted, findings } = scanAndRedact(output.context[i], "context");
-            output.context[i] = redacted;
-            allFindings.push(...findings);
-        }
-        if (allFindings.length > 0) {
-            const auditEntries = allFindings.map((f) => ({
-                timestamp: new Date().toISOString(),
-                source: "context",
-                ruleId: f.ruleId,
-                description: f.description,
-                fingerprint: f.redacted.match(/:([a-f0-9]{8})\]/)?.[1] || "",
-            }));
-            writeAuditBatch(auditEntries);
+        const audit = { ...ctx, sessionId: event.sessionID };
+        redactMessages(event.messages, "context", audit);
+        if (event.result && typeof event.result.summary === "string") {
+            event.result.summary = redactText(event.result.summary, "context", audit);
         }
     }
     catch {
-        // Degrade gracefully — never block compaction
+        // Never block compaction.
     }
 }
 //# sourceMappingURL=layer2-compaction.js.map
