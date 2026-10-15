@@ -158,6 +158,83 @@ Not guaranteed (documented, by design):
 - Content larger than the scanner's hard ceiling fails closed with a marker
   rather than being partially inspected.
 
+## Independence & interoperability
+
+Stranger Danger is a self-contained security inspector. It is being developed
+alongside two other independent OpenCode V2 plugins (Git That Shit and
+Checkpoint Orchestrator) but **requires neither**, and neither requires it.
+
+### Responsibilities
+
+- Inspect tool calls/arguments and model traffic for secrets and unsafe content.
+- Detect risks and report them through its own tools and audit log.
+- Own its security policy and audit records. Nothing else.
+- Its pre-execution hook is **read-only** and never mutates tool arguments.
+
+### Independence guarantees
+
+- **Works alone.** No companion plugin is needed to start or operate. There are
+  no cross-plugin imports, no shared database, and no shared configuration.
+- **No required order.** Correctness never depends on another plugin running
+  before or after. The `execute.before` hook is read-only, and the
+  `session.context` hook is the ordering-independent backstop: it re-scans the
+  fully assembled request, so even if a companion rewrites a tool result after
+  this plugin's `execute.after` hook, the secret is still removed before the
+  model request.
+- **Failure isolation.** Every hook callback is wrapped so that a malformed or
+  unexpected event can never throw out of the hook. A broken companion, a
+  missing optional interface, or a bad event cannot cascade into this plugin or
+  the runtime, and this plugin cannot cascade into others.
+- **Namespaced surface.** All tools use the `sd_` prefix; the plugin id is
+  `gitdamnit.stranger-danger`; storage and config are namespaced (below).
+- **Session isolation.** Each plugin instance captures its own project-scoped
+  audit path in a closure and passes it explicitly to every write. There is no
+  shared mutable process-global audit state, so concurrent sessions/projects in
+  one server never mix records. Audit entries carry a session ID when available.
+
+### Hooks registered
+
+| Hook | Mutates? | Purpose |
+| --- | --- | --- |
+| `tool.execute.before` | no (read-only) | Detect/audit secrets in files about to be read |
+| `tool.execute.after` | redacts tool result text | Keep secrets out of the model context |
+| `session.prompt` | redacts prompt text | Pre-admission prompt protection |
+| `session.context` | redacts system + messages | Ordering-independent request backstop |
+| `session.compaction` | redacts transcript/summary | Prevent secret propagation into checkpoints |
+| `event.subscribe` | no | Detection/audit only (observational) |
+
+### Configuration namespace
+
+- No required options. Unknown/companion options are ignored.
+- Optional allowlist: `.strangerdanger-allowlist.toml` in the project root.
+- Loaded via the standard V2 `plugins` entry; no global configuration is written.
+
+### Owned storage
+
+- Audit log: `<project>/.opencode/state/strangerdanger-audit.jsonl`
+  (git-ignored, `0600`; rotations `.1`/`.2`/`.3`). This plugin writes nowhere else.
+- It never writes into another plugin's storage and never reads a live companion
+  database.
+
+### Optional interoperability (read-only, versioned)
+
+The only interop surface is the semver-versioned, read-only engine export:
+
+```js
+import { scan, redact, scanAndRedact, scanAndRedactBounded, toSafeFinding }
+  from "@gitdamnit/stranger-danger/engine";
+```
+
+A companion plugin or the Docker Plugin Test Lab may call these to sanitize or
+inspect text. They are pure functions over strings with no shared state, no I/O
+beyond the project allowlist, and no dependency on this plugin being loaded. No
+integration is implemented that requires a companion to be present.
+
+### Compatible OpenCode V2 versions
+
+Targets the V2 runtime and `@opencode/plugin >= 2.0.0` (tested against
+`@opencode/plugin@2.0.29` and OpenCode `2.0.x`).
+
 ## Architecture
 
 ```

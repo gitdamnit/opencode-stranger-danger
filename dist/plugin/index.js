@@ -80,11 +80,44 @@ export const strangerDanger = Plugin.define({
             });
         });
         // --- Hooks ---------------------------------------------------------
-        await ctx.tool.hook("execute.before", (event) => handleLayer1({ tool: event.tool, sessionID: String(event.sessionID), input: event.input }, audit));
-        await ctx.tool.hook("execute.after", (event) => handleLayer3(event, audit));
-        await ctx.session.hook("prompt", (event) => handlePrompt({ sessionID: String(event.sessionID), prompt: event.prompt }, audit));
-        await ctx.session.hook("context", (event) => handleContext({ sessionID: String(event.sessionID), system: event.system, messages: event.messages }, audit));
-        await ctx.session.hook("compaction", (event) => handleCompaction({ sessionID: String(event.sessionID), messages: event.messages, result: event.result }, audit));
+        //
+        // Every hook callback is wrapped so that accessing a field of an
+        // unexpected/malformed event can never throw out of the hook. A thrown
+        // hook could cascade into other plugins or abort the runtime; failing
+        // closed *inside* the handler (which already catches) is safe, but
+        // throwing from the wrapper is not. This keeps Stranger Danger from
+        // ever breaking a companion plugin or the OpenCode runtime.
+        const sid = (event) => event && typeof event.sessionID === "string" ? event.sessionID : undefined;
+        await ctx.tool.hook("execute.before", (event) => {
+            try {
+                return handleLayer1({ tool: event?.tool, sessionID: sid(event), input: event?.input }, audit);
+            }
+            catch { /* never throw from a hook */ }
+        });
+        await ctx.tool.hook("execute.after", (event) => {
+            try {
+                return handleLayer3(event, audit);
+            }
+            catch { /* never throw from a hook */ }
+        });
+        await ctx.session.hook("prompt", (event) => {
+            try {
+                return handlePrompt({ sessionID: sid(event), prompt: event?.prompt }, audit);
+            }
+            catch { /* never throw from a hook */ }
+        });
+        await ctx.session.hook("context", (event) => {
+            try {
+                return handleContext({ sessionID: sid(event), system: event?.system, messages: event?.messages }, audit);
+            }
+            catch { /* never throw from a hook */ }
+        });
+        await ctx.session.hook("compaction", (event) => {
+            try {
+                return handleCompaction({ sessionID: sid(event), messages: event?.messages, result: event?.result }, audit);
+            }
+            catch { /* never throw from a hook */ }
+        });
         // --- Event subscription (detection/audit only) ---------------------
         const controller = new AbortController();
         void (async () => {

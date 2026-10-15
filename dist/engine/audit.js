@@ -12,11 +12,15 @@ const AUDIT_DIR_MODE = 0o700;
 const MAX_AUDIT_BYTES = 10 * 1024 * 1024;
 const MAX_ROTATIONS = 3;
 /**
- * The audit path used by the standalone CLI and by callers that do not pass an
- * explicit path. It is intentionally NOT a shared, mutable, process-global
- * value that the plugin relies on: the OpenCode plugin resolves a path per
- * project/session and passes it explicitly to every write, so that concurrent
- * projects in one server process never mix their audit records.
+ * Fallback audit path for the standalone CLI (a single-process program) and for
+ * tests. It is CLI/test-only.
+ *
+ * The OpenCode plugin NEVER reads or writes this value. A plugin instance
+ * resolves its own project-scoped path during `setup`, captures it in a
+ * closure, and passes it explicitly to every audit write. This keeps the
+ * plugin free of shared mutable process-global state, so multiple projects
+ * hosted in one OpenCode server (or an unrelated toolkit plugin in the same
+ * process) can never mix audit records.
  */
 let auditPathOverride;
 /**

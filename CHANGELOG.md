@@ -45,6 +45,22 @@ Security hardening and OpenCode V2 migration. Not yet published.
 - Runtime state is Git-ignored; the previously tracked audit file is untracked
   but preserved on disk.
 
+### Independence & interoperability standard
+
+- Confirmed and documented plugin independence: no cross-plugin imports, no
+  shared database/configuration, no required initialization order, no companion
+  dependency. Tools are `sd_`-namespaced; storage and config are namespaced.
+- Hardened hook callbacks to never throw on malformed/unexpected events, so a
+  broken companion or bad event cannot cascade.
+- Documented the ordering-independent guarantee (the `session.context` hook is
+  the backstop) and the single optional, read-only, semver-versioned interop
+  surface (`@gitdamnit/stranger-danger/engine`).
+- Removed a stale reference to the retired CheapCode project from
+  `scripts/write_fixture.ts`; it now writes only inside this repository.
+- Added an independence test suite (isolated instances, session isolation,
+  no-order-dependency, failure isolation, reload/cleanup, companion-absent
+  behavior, absence of cross-plugin coupling).
+
 ### Reliability, tests, packaging, CI
 
 - Fixed test discovery (referenced a non-existent `tests/integration.ts`;
