@@ -1,4 +1,4 @@
-import { scanAndRedact, toSafeFinding } from "../engine/scanner.js";
+import { scanAndRedactBounded, toSafeFinding } from "../engine/scanner.js";
 import { readAuditLog, resolveAuditPath } from "../engine/audit.js";
 import { loadAllowlist, saveAllowlistEntry } from "../engine/allowlist.js";
 import { NAMED_RULES, ENTROPY_RULES, CLEAN_ROOM_RULES } from "../engine/rules.js";
@@ -84,17 +84,31 @@ export function sdAllowlistAdd(args) {
     saveAllowlistEntry(entry);
     return "Allowlist entry added.";
 }
-/** `sd_scan` — returns secret-free metadata only. */
+/** Upper bound on content accepted by `sd_scan`. Keeps a model-invoked scan bounded. */
+export const MAX_SD_SCAN_CHARS = 8 * 1024 * 1024;
+/**
+ * `sd_scan` — returns secret-free metadata only.
+ *
+ * The input is bounded and scanned with the same chunk-safe path as the hooks,
+ * so a very large `content` argument cannot exhaust memory or hang the server.
+ */
 export function sdScan(args) {
-    const source = args.source ?? "file";
-    const { findings } = scanAndRedact(args.content, source);
-    if (findings.length === 0)
+    const source = args?.source ?? "file";
+    const content = typeof args?.content === "string" ? args.content : "";
+    if (content.length === 0)
         return "No secrets detected.";
+    if (content.length > MAX_SD_SCAN_CHARS) {
+        return `Content too large to scan: ${content.length} characters exceeds the ${MAX_SD_SCAN_CHARS}-character limit.`;
+    }
+    const { findings, complete, policy } = scanAndRedactBounded(content, source);
+    const note = complete ? "" : `\n\n[strangerdanger: content not fully inspected (${policy})]`;
+    if (findings.length === 0)
+        return `No secrets detected.${note}`;
     return findings
         .map((f) => {
-        const safe = toSafeFinding(f, args.content);
+        const safe = toSafeFinding(f, content);
         return `${safe.ruleId}: ${safe.description}\n  Location: line ${safe.line ?? "?"}, column ${(safe.column ?? 0) + 1}\n  Fingerprint: ${safe.fingerprint}\n  Redaction: ${safe.redaction}`;
     })
-        .join("\n\n");
+        .join("\n\n") + note;
 }
 //# sourceMappingURL=tools.js.map

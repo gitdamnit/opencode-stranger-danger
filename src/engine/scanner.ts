@@ -240,6 +240,25 @@ export type BoundedScanResult = {
 };
 
 /**
+ * Overridable bounds for `scanAndRedactBounded`. Production callers use the
+ * defaults; tests inject small values so the oversized/timeout fail-closed
+ * branches can be exercised with a controlled payload instead of hundreds of
+ * megabytes of real input.
+ */
+export type BoundedScanOptions = {
+    /** Hard ceiling on input length (characters). */
+    maxBytes?: number;
+    /** Characters scanned per window. */
+    window?: number;
+    /** Characters of overlap between windows; must be < `window`. */
+    overlap?: number;
+    /** Per-window time budget in milliseconds. */
+    windowBudgetMs?: number;
+    /** Clock injection for deterministic timeout tests. */
+    now?: () => number;
+};
+
+/**
  * Scan and redact arbitrarily large text without silently truncating it.
  *
  * Large content is scanned in overlapping windows so secrets that cross a
@@ -253,28 +272,35 @@ export function scanAndRedactBounded(
     content: string,
     source: Finding["source"],
     filePath?: string,
+    options: BoundedScanOptions = {},
 ): BoundedScanResult {
+    const windowSize = options.window ?? SCAN_WINDOW;
+    const overlap = Math.min(options.overlap ?? SCAN_OVERLAP, Math.max(0, windowSize - 1));
+    const maxBytes = options.maxBytes ?? MAX_BOUNDED_SCAN_BYTES;
+    const budgetMs = options.windowBudgetMs ?? SCAN_WINDOW_BUDGET_MS;
+    const now = options.now ?? Date.now;
+
     if (content.length === 0) {
         return { redacted: content, findings: [], complete: true };
     }
 
-    if (content.length <= SCAN_WINDOW) {
+    if (content.length <= windowSize) {
         const { redacted, findings } = scanAndRedact(content, source, filePath);
         return { redacted, findings, complete: true };
     }
 
-    if (content.length > MAX_BOUNDED_SCAN_BYTES) {
+    if (content.length > maxBytes) {
         return { redacted: UNSCANNABLE_MARKER, findings: [], complete: false, policy: "oversized" };
     }
 
-    const stride = SCAN_WINDOW - SCAN_OVERLAP;
+    const stride = windowSize - overlap;
     const collected: Finding[] = [];
     const seen = new Set<string>();
 
     for (let start = 0; start < content.length; start += stride) {
-        const end = Math.min(start + SCAN_WINDOW, content.length);
+        const end = Math.min(start + windowSize, content.length);
         const window = content.slice(start, end);
-        const windowStart = Date.now();
+        const windowStart = now();
 
         let windowFindings: Finding[];
         try {
@@ -283,7 +309,7 @@ export function scanAndRedactBounded(
             return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-error" };
         }
 
-        if (Date.now() - windowStart > SCAN_WINDOW_BUDGET_MS) {
+        if (now() - windowStart > budgetMs) {
             return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-timeout" };
         }
 

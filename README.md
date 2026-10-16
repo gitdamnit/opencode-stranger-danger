@@ -20,10 +20,16 @@ strangerDanger registers only documented V2 hooks. Reading a file never rewrites
 | --- | --- | --- |
 | Incoming prompt | `session.prompt` | User prompts, before durable admission |
 | Tool results | `tool.execute.after` | `read`/`bash`/`grep`/`fetch` output before it reaches the model |
-| Assembled request | `session.context` | System instructions, messages, tool-call inputs, tool results, auxiliary requests |
+| Agent-loop request | `session.context` | System instructions, messages, tool-call inputs, tool results |
+| Transient generation | `session.generate` | `ctx.session.generate` requests (not part of the agent loop) |
+| Title generation | `session.title` | Title requests, plus a plugin-supplied title `result` |
 | Checkpoint compaction | `session.compaction` | The transcript being summarized, plus a plugin-provided summary |
 | File inspection | `tool.execute.before` | Read-only detection + audit; **never writes to disk** |
-| Event stream | `event.subscribe` | Detection/audit only (observational; cannot prevent transmission) |
+| Event stream | `event.subscribe` | Detection/audit only (observational, post-admission; cannot prevent transmission) |
+
+The four `session.*` model-request hooks are separate V2 request kinds. Registering all
+four is what makes redaction ordering-independent: whatever path a request takes, its
+assembled system prompt and messages are re-scanned immediately before dispatch.
 
 All outgoing content is scanned with a **bounded, chunk-safe** scanner: large
 outputs are fully covered (secrets that straddle a window boundary are still
@@ -44,6 +50,26 @@ Add to your `opencode.jsonc` (`plugins`, not the V1 `plugin` key):
 ```
 
 The plugin requires the V2 runtime and `@opencode/plugin` (peer dependency).
+
+#### Loading from a directory or a checkout
+
+OpenCode resolves a plugin **directory** to `<directory>/index.{ts,js}` and does
+**not** consult `main` or `exports`. That is why this package ships a root
+`index.js` in addition to `dist/`: it makes `{ "package": "/path/to/plugin" }`
+and `"./plugins/stranger-danger"` entries load correctly. A published npm
+package (the form above) resolves through `exports` as usual.
+
+If a plugin path is misconfigured, OpenCode logs `Plugin entrypoint not found`
+and the plugin does **not** load — the session runs unprotected. After install,
+confirm the plugin is active:
+
+```bash
+# in an OpenCode session
+> call the sd_status tool
+```
+
+`sd_status` reports the version, rule count, and the project audit-log path. If it
+is unavailable, the plugin did not load.
 
 ### Standalone CLI
 
@@ -138,25 +164,55 @@ session-scoped; ignored by Git).
 
 ## Security guarantees and known limitations
 
+Verified against OpenCode `2.0.21` / `@opencode/plugin` `2.0.29` on the real
+runtime (isolated server, disposable project, loopback mock provider): a
+synthetic secret in a prompt is transmitted by a control run and is **absent**
+with the plugin loaded, while a redaction token and a secret-free audit record
+are present.
+
 Guaranteed:
 
 - Reading a file through the plugin **never modifies it** on disk.
-- Tool results, assembled model requests, compaction transcripts, and prompts are
-  redacted before transmission through the session pipeline.
-- No raw secret is emitted by the CLI or the audit log.
+- Prompts, tool results, the agent-loop request (`session.context`), transient
+  `session.generate` requests, title requests, and compaction transcripts are
+  redacted before transmission on the supported request path.
+- No raw secret is emitted by the CLI, the plugin tools, or the audit log.
 - `sd redact` writes atomically and creates **no** plaintext backup unless you
   explicitly ask for one.
+- Hook callbacks never throw: a malformed or unexpected event cannot break the
+  runtime or a companion plugin.
 
-Not guaranteed (documented, by design):
+Not covered (documented, by design):
 
-- Provider-native **WebSocket** traffic that bypasses the session HTTP pipeline
-  is not covered.
-- The V2 event stream is observational (post-admission), so `event.subscribe`
-  cannot prevent disclosure; it only audits.
-- Structured output/metadata is redacted by replacing string leaves; exotic
-  object types are left untouched to avoid corruption.
-- Content larger than the scanner's hard ceiling fails closed with a marker
-  rather than being partially inspected.
+- **Provider-native WebSocket traffic.** OpenCode exposes experimental
+  `experimental.ws.handshake` / `experimental.ws.send` / `experimental.ws.receive`
+  hooks, but this plugin does **not** register them. Providers that stream over a
+  WebSocket are not inspected. Plain-HTTP providers, and the HTTP fallback of a
+  WebSocket route, are covered by the `session.*` hooks.
+- **Raw HTTP bodies.** This plugin edits assembled messages, not `http.request`
+  bodies. Any content a provider layer adds to a request that is not derived from
+  `system`/`messages` is not scanned. `event.subscribe` is observation only
+  (post-admission) and cannot prevent disclosure.
+- **Structured values.** String leaves of plain objects/arrays are redacted.
+  Exotic objects (anything whose prototype is not `Object.prototype`/`null`, e.g.
+  `Map`, `Set`, `Date`, typed arrays) are passed through unchanged to avoid
+  corrupting non-plain data; content inside them is not inspected. Nesting deeper
+  than 32 levels, and cyclic structures, fail **closed** with an explicit marker
+  rather than being silently passed.
+- **Encoded secrets.** Detection is pattern-based. Base64-encoded or otherwise
+  obfuscated secrets that do not match a rule are not detected by that rule (the
+  high-entropy detectors may still flag them).
+
+Size limits (all fail closed rather than truncating):
+
+| Surface | Limit | Behavior past the limit |
+| --- | --- | --- |
+| Bounded scanner (hooks, CLI) | 256 MiB (characters) | whole input replaced by the fail-closed marker |
+| Per scan window | 1 MiB, 64 KiB overlap, 2.5 s budget | window timeout/error fails the scan closed |
+| Event-stream text | 200,000 chars per field | field skipped |
+| File pre-read inspection (`execute.before`) | 10 MiB | skipped; result/context hooks still cover it |
+| `sd_scan` tool input | 8 MiB (characters) | refused with a message |
+
 
 ## Independence & interoperability
 
@@ -176,8 +232,8 @@ Checkpoint Orchestrator) but **requires neither**, and neither requires it.
 - **Works alone.** No companion plugin is needed to start or operate. There are
   no cross-plugin imports, no shared database, and no shared configuration.
 - **No required order.** Correctness never depends on another plugin running
-  before or after. The `execute.before` hook is read-only, and the
-  `session.context` hook is the ordering-independent backstop: it re-scans the
+  before or after. The `execute.before` hook is read-only, and the `session.*`
+  model-request hooks (`context`, `generate`, `title`, `compaction`) re-scan the
   fully assembled request, so even if a companion rewrites a tool result after
   this plugin's `execute.after` hook, the secret is still removed before the
   model request.
@@ -197,9 +253,11 @@ Checkpoint Orchestrator) but **requires neither**, and neither requires it.
 | Hook | Mutates? | Purpose |
 | --- | --- | --- |
 | `tool.execute.before` | no (read-only) | Detect/audit secrets in files about to be read |
-| `tool.execute.after` | redacts tool result text | Keep secrets out of the model context |
+| `tool.execute.after` | redacts tool result text/output/metadata | Keep secrets out of the model context |
 | `session.prompt` | redacts prompt text | Pre-admission prompt protection |
-| `session.context` | redacts system + messages | Ordering-independent request backstop |
+| `session.context` | redacts system + messages | Ordering-independent agent-loop backstop |
+| `session.generate` | redacts system + messages | Transient generation requests |
+| `session.title` | redacts system + messages + `result` | Title generation |
 | `session.compaction` | redacts transcript/summary | Prevent secret propagation into checkpoints |
 | `event.subscribe` | no | Detection/audit only (observational) |
 
@@ -233,7 +291,13 @@ integration is implemented that requires a companion to be present.
 ### Compatible OpenCode V2 versions
 
 Targets the V2 runtime and `@opencode/plugin >= 2.0.0` (tested against
-`@opencode/plugin@2.0.29` and OpenCode `2.0.x`).
+`@opencode/plugin@2.0.29` and OpenCode `2.0.21`).
+
+Note on plugin resolution: OpenCode distinguishes **package** entries (resolved
+through `exports`/`main`) from **directory** entries (resolved to
+`<directory>/index.{ts,js}`). This package ships a root `index.js` so both forms
+load. The local plugin directory is *not* watched recursively — only the resolved
+entrypoint and its imports are.
 
 ## Architecture
 

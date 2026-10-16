@@ -1,5 +1,5 @@
 import type { Finding } from "../engine/types.js";
-import { scanAndRedactBounded } from "../engine/scanner.js";
+import { scanAndRedactBounded, UNSCANNABLE_MARKER } from "../engine/scanner.js";
 import { writeAuditBatch, auditEntryFromFinding } from "../engine/audit.js";
 
 /**
@@ -53,54 +53,93 @@ export function redactText(
     return redacted;
 }
 
-/** Maximum nesting depth traversed when redacting structured values. */
-const MAX_STRUCTURED_DEPTH = 8;
+/**
+ * Maximum nesting depth traversed when redacting structured values. Plain JSON
+ * produced by tools is shallow; anything deeper than this is treated as
+ * unexpected and fails closed (below) rather than being walked further.
+ */
+const MAX_STRUCTURED_DEPTH = 32;
 
 /**
  * Redact string leaves of a structured value (tool output, metadata, message
- * part inputs/results) while preserving its shape and types. Exotic objects are
- * left untouched so we never corrupt non-plain data.
+ * part inputs/results) while preserving its shape and types.
+ *
+ * Fail-safe behavior:
+ *   - A cyclic structure is detected with a `seen` set instead of recursing
+ *     until the stack overflows. (Before this guard, a self-referential object
+ *     threw a `RangeError`, the surrounding hook caught it, and *every* string
+ *     in the result was left unredacted — a silent fail-open.)
+ *   - A value that cannot be safely inspected (beyond `MAX_STRUCTURED_DEPTH`)
+ *     is replaced with the explicit fail-closed marker, never passed through
+ *     silently.
+ *   - Exotic objects (anything whose prototype is not `Object.prototype`/`null`)
+ *     are left untouched so non-plain data is never corrupted; this residual
+ *     limit is documented in the README.
  */
 export function redactStructured(
     value: unknown,
     source: Finding["source"],
     ctx: AuditContext,
     depth = 0,
+    seen: WeakSet<object> = new WeakSet(),
 ): unknown {
     if (typeof value === "string") return redactText(value, source, ctx);
-    if (value === null || typeof value !== "object" || depth >= MAX_STRUCTURED_DEPTH) return value;
+    if (value === null || typeof value !== "object") return value;
+    if (depth >= MAX_STRUCTURED_DEPTH) return UNSCANNABLE_MARKER;
 
     if (Array.isArray(value)) {
+        if (seen.has(value)) return UNSCANNABLE_MARKER;
+        seen.add(value);
         const out = new Array(value.length);
-        for (let i = 0; i < value.length; i++) out[i] = redactStructured(value[i], source, ctx, depth + 1);
+        for (let i = 0; i < value.length; i++) out[i] = redactStructured(value[i], source, ctx, depth + 1, seen);
+        seen.delete(value);
         return out;
     }
 
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) return value;
+    if (seen.has(value)) return UNSCANNABLE_MARKER;
 
+    seen.add(value);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        out[k] = redactStructured(v, source, ctx, depth + 1);
+        out[k] = redactStructured(v, source, ctx, depth + 1, seen);
     }
+    seen.delete(value);
     return out;
 }
 
-/** Redact in place, replacing only string leaves of a plain object/array. */
-export function redactStructuredInPlace(value: unknown, source: Finding["source"], ctx: AuditContext, depth = 0): void {
+/**
+ * Redact in place, replacing only string leaves of a plain object/array.
+ * Cycle-safe; a cyclic or over-deep branch is left untouched (this helper is a
+ * best-effort in-place variant and cannot fail closed by substituting a value).
+ */
+export function redactStructuredInPlace(
+    value: unknown,
+    source: Finding["source"],
+    ctx: AuditContext,
+    depth = 0,
+    seen: WeakSet<object> = new WeakSet(),
+): void {
     if (value === null || typeof value !== "object" || depth >= MAX_STRUCTURED_DEPTH) return;
+    if (seen.has(value)) return;
+
     if (Array.isArray(value)) {
+        seen.add(value);
         for (let i = 0; i < value.length; i++) {
             const v = value[i];
             if (typeof v === "string") value[i] = redactText(v, source, ctx);
-            else redactStructuredInPlace(v, source, ctx, depth + 1);
+            else redactStructuredInPlace(v, source, ctx, depth + 1, seen);
         }
+        seen.delete(value);
         return;
     }
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) return;
+    seen.add(value);
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
         if (typeof v === "string") (value as Record<string, unknown>)[k] = redactText(v, source, ctx);
-        else redactStructuredInPlace(v, source, ctx, depth + 1);
+        else redactStructuredInPlace(v, source, ctx, depth + 1, seen);
     }
+    seen.delete(value);
 }

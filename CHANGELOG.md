@@ -25,6 +25,23 @@ Security hardening and OpenCode V2 migration. Not yet published.
   `(?s:…)`), POSIX classes, and `\z` — which crashed `new RegExp` at import time
   and made the whole engine unusable — are translated to valid JavaScript.
 - **Performance.** Whole-content keyword prefilter; ~500× faster on large inputs.
+- **Auxiliary requests are now covered.** `session.context` only runs for the
+  agent loop. The plugin now also registers `session.generate` (transient
+  `ctx.session.generate` requests) and `session.title` (title generation), which
+  had been sent uninspected.
+- **Tool error metadata is redacted.** `Tool.Error.metadata` is surfaced to the
+  model alongside the message; it is now scanned like the rest of the result.
+- **Structured redaction is cycle-safe and fails closed.** A self-referential
+  tool output previously overflowed the stack; the thrown error was swallowed by
+  the hook, leaving the *entire* result — including plain string secrets —
+  unredacted. Cyclic and over-deep (>32 levels) branches now fail closed with an
+  explicit marker instead.
+- **V2 event-stream audit actually fires.** The handler filtered on
+  `type.startsWith("message")`, but every V2 event is namespaced `session.*`
+  (`session.text.ended`, `session.tool.success`, …), so it never audited anything.
+  It now consumes the real event shapes (skipping chatty `*.delta` frames).
+- **`sd_scan` input is bounded** (8 MiB) so a model-invoked scan cannot exhaust
+  memory or hang the server.
 
 ### OpenCode V2 migration
 
@@ -72,6 +89,19 @@ Security hardening and OpenCode V2 migration. Not yet published.
 - CI rewritten to run typecheck, lint, build, unit, integration, security, and
   package-validation steps on Node 22. Added `eslint.config.js` and
   `scripts/verify-package.mjs`.
+- **Root `index.js` entrypoint.** OpenCode resolves a plugin *directory* to
+  `<directory>/index.{ts,js}` and ignores `main`/`exports`, so a
+  `{ "package": "/path/to/stranger-danger" }` entry previously failed to load with
+  `Plugin entrypoint not found` — the session ran unprotected. The package now
+  ships a root `index.js` (also published via `files`).
+- Added `tests/security-coverage.test.ts` covering the fixes above: auxiliary
+  request hooks, tool-error metadata, cycle/over-depth fail-closed behavior,
+  real V2 event detection, injected-limit bounds for the oversized/timeout
+  branches, the `sd_scan` cap, and two-instance audit isolation.
+- Verified on the real runtime (OpenCode `2.0.21`, isolated server + disposable
+  project + loopback mock provider): control run transmits the synthetic secret;
+  plugin run does not, emits a redaction token, and writes a secret-free audit
+  record.
 
 ## 0.1.0 (2026-05-08)
 

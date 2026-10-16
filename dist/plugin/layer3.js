@@ -24,6 +24,12 @@ export async function handleLayer3(event, ctx) {
             if (event.error && "error" in event.error) {
                 event.error.error = redactStructured(event.error.error, "output", audit);
             }
+            // `Tool.Error.metadata` is a free-form record that is surfaced to the
+            // model alongside the message; redact it too so a secret in tool
+            // error metadata cannot reach the transcript.
+            if (event.error && event.error.metadata !== undefined) {
+                event.error.metadata = redactStructured(event.error.metadata, "output", audit);
+            }
             return;
         }
         const result = event.result;

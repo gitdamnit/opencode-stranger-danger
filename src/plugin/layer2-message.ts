@@ -106,25 +106,73 @@ export async function handleContext(event: SessionContextEvent, ctx: AuditContex
     }
 }
 
+export type SessionGenerateEvent = SessionContextEvent;
+
+export type SessionTitleEvent = SessionContextEvent & {
+    /** When set, the plugin supplies the title and the model call is skipped. */
+    result?: unknown;
+};
+
+/**
+ * `ctx.session.hook("generate")` — transient `ctx.session.generate` requests.
+ * Same request shape as `context`, so the same redaction applies. Without this
+ * hook, text supplied to `session.generate` would be sent uninspected.
+ */
+export async function handleGenerate(event: SessionGenerateEvent, ctx: AuditContext): Promise<void> {
+    await handleContext(event, ctx);
+}
+
+/**
+ * `ctx.session.hook("title")` — title generation. System/messages have the same
+ * shape as `context`; additionally redact an explicitly supplied `result`
+ * string so a title cannot persist a secret either.
+ */
+export async function handleTitle(event: SessionTitleEvent, ctx: AuditContext): Promise<void> {
+    try {
+        await handleContext(event, ctx);
+        if (typeof event.result === "string") {
+            event.result = redactText(event.result, "context", withSession(ctx, event.sessionID));
+        }
+    } catch {
+        // Never break title generation.
+    }
+}
+
+/** Largest single text field scanned from an event (events are untrusted input). */
+const MAX_EVENT_TEXT = 200_000;
+
 /**
  * Detection-only handler for the V2 event stream. Events are observational
  * (they arrive after admission/transmission), so this cannot prevent
  * disclosure; it records findings for the audit log. Prevention happens in the
- * `prompt`, `context`, `compaction`, and `execute.after` hooks.
+ * `prompt`, `context`, `compaction`, `generate`, and `execute.after` hooks.
+ *
+ * V2 event types are namespaced `session.*` (for example `session.text.ended`,
+ * `session.tool.success`, `session.synthetic`). Per-token `*.delta` frames are
+ * skipped on purpose: they are chatty and the completed event carries the same
+ * text, so auditing them would only duplicate records.
  */
 export function handleMessageEvent(event: unknown, ctx: AuditContext): void {
     try {
-        const e = event as Record<string, any> | undefined;
-        const type = e && typeof e.type === "string" ? e.type : "";
-        if (!type.startsWith("message")) return;
+        const e = event as Record<string, any> | null | undefined;
+        if (!e || typeof e !== "object") return;
+        const type = typeof e.type === "string" ? e.type : "";
+        if (!type.startsWith("session.") || type.endsWith(".delta")) return;
+
+        const data = e.data;
+        if (!data || typeof data !== "object") return;
 
         const texts: string[] = [];
         const push = (v: unknown): void => {
-            if (typeof v === "string" && v.length > 0 && v.length <= 200_000) texts.push(v);
+            if (typeof v === "string" && v.length > 0 && v.length <= MAX_EVENT_TEXT) texts.push(v);
         };
-        if (e?.part && typeof e.part === "object") push(e.part.text);
-        if (e?.properties && typeof e.properties === "object") push(e.properties.text);
-        push(e?.text);
+        push(data.text);
+        if (Array.isArray(data.content)) {
+            for (const c of data.content) {
+                if (c && typeof c === "object") push((c as Record<string, unknown>).text);
+            }
+        }
+        if (data.error && typeof data.error === "object") push((data.error as Record<string, unknown>).message);
 
         for (const text of texts) {
             const { findings } = scanAndRedact(text, "message");

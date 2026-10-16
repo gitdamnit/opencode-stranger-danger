@@ -212,24 +212,29 @@ export const UNSCANNABLE_MARKER = "[REDACTED:strangerdanger-oversized-unscannabl
  * or input beyond the hard ceiling), the result fails closed with an explicit
  * marker and `complete: false` rather than emitting uninspected content.
  */
-export function scanAndRedactBounded(content, source, filePath) {
+export function scanAndRedactBounded(content, source, filePath, options = {}) {
+    const windowSize = options.window ?? SCAN_WINDOW;
+    const overlap = Math.min(options.overlap ?? SCAN_OVERLAP, Math.max(0, windowSize - 1));
+    const maxBytes = options.maxBytes ?? MAX_BOUNDED_SCAN_BYTES;
+    const budgetMs = options.windowBudgetMs ?? SCAN_WINDOW_BUDGET_MS;
+    const now = options.now ?? Date.now;
     if (content.length === 0) {
         return { redacted: content, findings: [], complete: true };
     }
-    if (content.length <= SCAN_WINDOW) {
+    if (content.length <= windowSize) {
         const { redacted, findings } = scanAndRedact(content, source, filePath);
         return { redacted, findings, complete: true };
     }
-    if (content.length > MAX_BOUNDED_SCAN_BYTES) {
+    if (content.length > maxBytes) {
         return { redacted: UNSCANNABLE_MARKER, findings: [], complete: false, policy: "oversized" };
     }
-    const stride = SCAN_WINDOW - SCAN_OVERLAP;
+    const stride = windowSize - overlap;
     const collected = [];
     const seen = new Set();
     for (let start = 0; start < content.length; start += stride) {
-        const end = Math.min(start + SCAN_WINDOW, content.length);
+        const end = Math.min(start + windowSize, content.length);
         const window = content.slice(start, end);
-        const windowStart = Date.now();
+        const windowStart = now();
         let windowFindings;
         try {
             windowFindings = scan(window, source, filePath);
@@ -237,7 +242,7 @@ export function scanAndRedactBounded(content, source, filePath) {
         catch {
             return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-error" };
         }
-        if (Date.now() - windowStart > SCAN_WINDOW_BUDGET_MS) {
+        if (now() - windowStart > budgetMs) {
             return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-timeout" };
         }
         for (const f of windowFindings) {

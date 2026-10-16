@@ -31,11 +31,33 @@ export declare function handlePrompt(event: SessionPromptEvent, ctx: AuditContex
  * loop, including the already-redacted tool results.
  */
 export declare function handleContext(event: SessionContextEvent, ctx: AuditContext): Promise<void>;
+export type SessionGenerateEvent = SessionContextEvent;
+export type SessionTitleEvent = SessionContextEvent & {
+    /** When set, the plugin supplies the title and the model call is skipped. */
+    result?: unknown;
+};
+/**
+ * `ctx.session.hook("generate")` — transient `ctx.session.generate` requests.
+ * Same request shape as `context`, so the same redaction applies. Without this
+ * hook, text supplied to `session.generate` would be sent uninspected.
+ */
+export declare function handleGenerate(event: SessionGenerateEvent, ctx: AuditContext): Promise<void>;
+/**
+ * `ctx.session.hook("title")` — title generation. System/messages have the same
+ * shape as `context`; additionally redact an explicitly supplied `result`
+ * string so a title cannot persist a secret either.
+ */
+export declare function handleTitle(event: SessionTitleEvent, ctx: AuditContext): Promise<void>;
 /**
  * Detection-only handler for the V2 event stream. Events are observational
  * (they arrive after admission/transmission), so this cannot prevent
  * disclosure; it records findings for the audit log. Prevention happens in the
- * `prompt`, `context`, `compaction`, and `execute.after` hooks.
+ * `prompt`, `context`, `compaction`, `generate`, and `execute.after` hooks.
+ *
+ * V2 event types are namespaced `session.*` (for example `session.text.ended`,
+ * `session.tool.success`, `session.synthetic`). Per-token `*.delta` frames are
+ * skipped on purpose: they are chatty and the completed event carries the same
+ * text, so auditing them would only duplicate records.
  */
 export declare function handleMessageEvent(event: unknown, ctx: AuditContext): void;
 export {};

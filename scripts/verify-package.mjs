@@ -6,7 +6,7 @@
  * `bin`, and runtime dependencies are correct — not just the source tree.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -71,6 +71,15 @@ try {
         run(process.execPath, ["--input-type=module", "-e",
             "import('@gitdamnit/stranger-danger').then(m=>{const p=m.default;if(!p||p.id!=='gitdamnit.stranger-danger'||typeof p.setup!=='function')process.exit(1)})",
         ], { cwd: workdir });
+    });
+
+    // OpenCode resolves a plugin *directory* to <dir>/index.{ts,js} and ignores
+    // main/exports, so the shipped package must include a root entrypoint.
+    step("published package includes the root directory entrypoint", () => {
+        const entry = join(workdir, "node_modules", "@gitdamnit", "stranger-danger", "index.js");
+        if (!existsSync(entry)) throw new Error("package is missing root index.js (directory installs would not load)");
+        const src = readFileSync(entry, "utf8");
+        if (!/export\s*\{\s*default\s*\}/.test(src)) throw new Error("root index.js does not export a default plugin");
     });
 
     // Clean up the tarball produced by pack.

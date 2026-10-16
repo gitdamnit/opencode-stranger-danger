@@ -19,7 +19,14 @@ export declare function sdAllowlistAdd(args: {
     path?: string;
     regex?: string;
 }): string;
-/** `sd_scan` — returns secret-free metadata only. */
+/** Upper bound on content accepted by `sd_scan`. Keeps a model-invoked scan bounded. */
+export declare const MAX_SD_SCAN_CHARS: number;
+/**
+ * `sd_scan` — returns secret-free metadata only.
+ *
+ * The input is bounded and scanned with the same chunk-safe path as the hooks,
+ * so a very large `content` argument cannot exhaust memory or hang the server.
+ */
 export declare function sdScan(args: {
     content: string;
     source?: Finding["source"];

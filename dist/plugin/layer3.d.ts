@@ -12,6 +12,7 @@ export type Layer3Event = {
     error?: {
         message?: string;
         error?: unknown;
+        metadata?: unknown;
     };
 };
 /**
