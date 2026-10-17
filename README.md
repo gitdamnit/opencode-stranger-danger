@@ -49,6 +49,11 @@ Add to your `opencode.jsonc` (`plugins`, not the V1 `plugin` key):
 }
 ```
 
+> **0.2.0 is not yet on npm.** Until it is published, install it from the
+> repository or a local checkout — see
+> [Loading from a directory or a checkout](#loading-from-a-directory-or-a-checkout)
+> below. The `plugins` entry above resolves once the package is published.
+
 The plugin requires the V2 runtime and `@opencode/plugin` (peer dependency).
 
 #### Loading from a directory or a checkout
@@ -74,7 +79,7 @@ is unavailable, the plugin did not load.
 ### Standalone CLI
 
 ```bash
-npm install -g @gitdamnit/stranger-danger
+npm install -g @gitdamnit/stranger-danger   # once published to npm
 ```
 
 ### Use with envsitter-guard
