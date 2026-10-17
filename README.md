@@ -164,6 +164,9 @@ session-scoped; ignored by Git).
 
 ## Security guarantees and known limitations
 
+This section is the security contract. To report a vulnerability, see
+[SECURITY.md](SECURITY.md).
+
 Verified against OpenCode `2.0.21` / `@opencode/plugin` `2.0.29` on the real
 runtime (isolated server, disposable project, loopback mock provider): a
 synthetic secret in a prompt is transmitted by a control run and is **absent**

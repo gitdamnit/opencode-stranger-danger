@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-16)
 
-Security hardening and OpenCode V2 migration. Not yet published.
+Security hardening and OpenCode V2 migration. Published as a GitHub release;
+npm publication of `@gitdamnit/stranger-danger` is pending registry setup
+(install from the repository in the meantime).
 
 ### Security fixes
 
