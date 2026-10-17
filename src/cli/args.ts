@@ -19,6 +19,12 @@ export function parseArgs(argv: string[]): CliArgs {
      for (let i = 1; i < args.length; i++) {
          const arg = args[i];
          if (arg.startsWith("--")) {
+             const eq = arg.indexOf("=");
+             if (eq !== -1) {
+                 // --flag=value
+                 flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+                 continue;
+             }
              const key = arg.slice(2);
              const next = args[i + 1];
              if (next && !next.startsWith("--")) {
@@ -64,21 +70,23 @@ export function parseArgs(argv: string[]): CliArgs {
  }
 
 export const USAGE = `
-strangerDanger v0.1.0 — Secret and PII redaction guard
+strangerDanger v0.2.0 — Secret and PII redaction guard
 
 Usage: sd <command> [options]
 
 Commands:
   scan <file|directory|->    Scan a file, directory, or stdin for secrets
-  redact <file>              Redact secrets in a file in-place (creates .backup)
+  redact <file>              Redact secrets in a file in-place (atomic, no plaintext backup by default)
   audit                      Show the audit log
   rules                      List all active detection rules
-  allowlist add              Add an allowlist entry interactively
+  allowlist add              Add an allowlist entry
   allowlist show             Show current allowlist entries
   version                    Show version
 
 Options:
   --source <type>            Source type for scan: file, context, output, message
-  --json                     Output in JSON format
+  --json                     Output in JSON format (never contains raw secrets)
+  --backup                   Redact with a permission-restricted backup outside the working tree
+  --backup-dir <dir>         Store the redaction backup in <dir> instead of the default location
   --help                     Show this help message
 `;

@@ -59,7 +59,16 @@ function hasKeyword(text, keywords) {
  */
 export function scan(content, source, filePath) {
     const findings = [];
+    // Whole-content keyword prefilter. A rule whose `keywords` do not appear
+    // anywhere cannot match (its regex requires the keyword in context), so it
+    // is skipped entirely. This turns the scan from "run 236 regexes over every
+    // character" into "run only the handful of plausible rules", which is the
+    // difference between ~100 s and a few ms on a multi-megabyte line.
+    const lowerContent = content.toLowerCase();
     for (const rule of [...NAMED_RULES, ...CLEAN_ROOM_RULES]) {
+        if (rule.keywords.length > 0 && !rule.keywords.some((kw) => lowerContent.includes(kw.toLowerCase()))) {
+            continue;
+        }
         rule.regex.lastIndex = 0;
         let match;
         while ((match = rule.regex.exec(content)) !== null) {
@@ -142,7 +151,12 @@ export function scan(content, source, filePath) {
 export function redact(content, findings) {
     if (findings.length === 0)
         return content;
-    const sorted = [...findings].sort((a, b) => a.offset - b.offset);
+    // Defensive: ignore findings that do not point at real, non-empty ranges of
+    // this content (bad offsets from custom callers, or empty matches).
+    const valid = findings.filter((f) => f.offset >= 0 && f.offset < content.length && f.match.length > 0 && f.offset + f.match.length <= content.length);
+    if (valid.length === 0)
+        return content;
+    const sorted = [...valid].sort((a, b) => a.offset - b.offset);
     const nonOverlapping = [];
     let lastEnd = 0;
     for (const finding of sorted) {
@@ -170,5 +184,101 @@ export function scanAndRedact(content, source, filePath) {
     const findings = filterByAllowlist(rawFindings, allowlist);
     const redacted = redact(content, findings);
     return { redacted, findings };
+}
+/**
+ * Size of each scanning window for large content. Content at or below this size
+ * is scanned in a single pass.
+ */
+const SCAN_WINDOW = 1024 * 1024;
+/**
+ * Overlap between consecutive windows. Must be at least the length of the
+ * longest match any rule can produce so a secret that straddles a window
+ * boundary is still fully contained in one window.
+ */
+const SCAN_OVERLAP = 64 * 1024;
+/** Per-window time budget. A window that exceeds it makes the scan fail closed. */
+const SCAN_WINDOW_BUDGET_MS = 2500;
+/** Hard ceiling to avoid unbounded memory/time on absurd input. */
+export const MAX_BOUNDED_SCAN_BYTES = 256 * 1024 * 1024;
+/** Explicit marker used when content cannot be inspected safely. */
+export const UNSCANNABLE_MARKER = "[REDACTED:strangerdanger-oversized-unscannable]";
+/**
+ * Scan and redact arbitrarily large text without silently truncating it.
+ *
+ * Large content is scanned in overlapping windows so secrets that cross a
+ * window boundary are still detected. Findings are collected across windows,
+ * deduplicated, and applied once to the whole input, so non-sensitive content
+ * is preserved byte-for-byte. If a window cannot be inspected (timeout, error,
+ * or input beyond the hard ceiling), the result fails closed with an explicit
+ * marker and `complete: false` rather than emitting uninspected content.
+ */
+export function scanAndRedactBounded(content, source, filePath, options = {}) {
+    const windowSize = options.window ?? SCAN_WINDOW;
+    const overlap = Math.min(options.overlap ?? SCAN_OVERLAP, Math.max(0, windowSize - 1));
+    const maxBytes = options.maxBytes ?? MAX_BOUNDED_SCAN_BYTES;
+    const budgetMs = options.windowBudgetMs ?? SCAN_WINDOW_BUDGET_MS;
+    const now = options.now ?? Date.now;
+    if (content.length === 0) {
+        return { redacted: content, findings: [], complete: true };
+    }
+    if (content.length <= windowSize) {
+        const { redacted, findings } = scanAndRedact(content, source, filePath);
+        return { redacted, findings, complete: true };
+    }
+    if (content.length > maxBytes) {
+        return { redacted: UNSCANNABLE_MARKER, findings: [], complete: false, policy: "oversized" };
+    }
+    const stride = windowSize - overlap;
+    const collected = [];
+    const seen = new Set();
+    for (let start = 0; start < content.length; start += stride) {
+        const end = Math.min(start + windowSize, content.length);
+        const window = content.slice(start, end);
+        const windowStart = now();
+        let windowFindings;
+        try {
+            windowFindings = scan(window, source, filePath);
+        }
+        catch {
+            return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-error" };
+        }
+        if (now() - windowStart > budgetMs) {
+            return { redacted: UNSCANNABLE_MARKER, findings: collected, complete: false, policy: "window-timeout" };
+        }
+        for (const f of windowFindings) {
+            const absolute = { ...f, offset: start + f.offset };
+            const key = `${absolute.ruleId}:${absolute.offset}:${absolute.match.length}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                collected.push(absolute);
+            }
+        }
+        if (end >= content.length)
+            break;
+    }
+    const allowlist = loadAllowlist();
+    const findings = filterByAllowlist(collected, allowlist);
+    return { redacted: redact(content, findings), findings, complete: true };
+}
+/** Convert a finding to a secret-free projection for output. */
+export function toSafeFinding(finding, content) {
+    const fpMatch = finding.redacted.match(/:([a-f0-9]{8})\]/);
+    const safe = {
+        ruleId: finding.ruleId,
+        description: finding.description,
+        source: finding.source,
+        offset: finding.offset,
+        fingerprint: fpMatch ? fpMatch[1] : "",
+        redaction: finding.redacted,
+    };
+    if (finding.filePath)
+        safe.filePath = finding.filePath;
+    if (content !== undefined) {
+        const before = content.slice(0, finding.offset);
+        const lastNewline = before.lastIndexOf("\n");
+        safe.line = before.split("\n").length;
+        safe.column = finding.offset - (lastNewline + 1);
+    }
+    return safe;
 }
 //# sourceMappingURL=scanner.js.map

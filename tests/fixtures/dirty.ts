@@ -27,8 +27,9 @@ const MONGO_URI = "mongodb+srv://fake_user:fake_password@cluster0.example.invali
 // Supabase token - defanged test fixture
 const SUPABASE_TOKEN = "SUPABASE_FAKE_TOKEN_FOR_TESTS_NOT_REAL";
 
-// Private Key - defanged test fixture
-const PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nFAKE_PRIVATE_KEY_FOR_TESTS_ONLY_DO_NOT_USE\\n-----END PRIVATE KEY-----";
+// Private Key - defanged test fixture. Synthetic body is not a real key; it is
+// long enough (>= 64 chars) to satisfy the PEM detection rule's body length.
+const PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nRkFLRV9QUklWQVRFX0tFWV9GT1JfVEVTVFNfT05MWV9ET19OT1RfVVNFXzAwMDAwMDAwMDAwMDAwMDA=\\n-----END PRIVATE KEY-----";
 
 // JWT token - defanged test fixture
 const JWT_TOKEN = "JWT_FAKE_TOKEN_FOR_TESTS_NOT_REAL";

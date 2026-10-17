@@ -1,8 +1,26 @@
 {
   "name": "@gitdamnit/stranger-danger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Secret and PII redaction guard for AI coding agents — scans files, context windows, and outputs before secrets reach LLMs",
+  "keywords": [
+    "opencode",
+    "security",
+    "secrets",
+    "redaction",
+    "pii",
+    "gitleaks",
+    "plugin"
+  ],
+  "author": "gitdamnit",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gitdamnit/opencode-stranger-danger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gitdamnit/opencode-stranger-danger/issues"
+  },
+  "homepage": "https://github.com/gitdamnit/opencode-stranger-danger#readme",
   "type": "module",
   "main": "dist/plugin/index.js",
   "exports": {
@@ -13,34 +31,43 @@
     "sd": "./dist/cli/index.js"
   },
   "files": [
+    "index.js",
     "dist/",
     "rules/gitleaks-rules.toml",
     ".strangerdanger-allowlist.toml",
-    "strangerdanger.jpeg",
+    "strangerdanger2.jpeg",
     "README.md",
     "CHANGELOG.md"
   ],
-"scripts": {
-     "build": "tsc",
-     "build:rules": "tsx scripts/compile-rules.ts",
-     "prebuild": "npm run build:rules",
-     "test": "tsx --test tests/engine/*.ts tests/plugin/*.ts tests/cli/*.ts tests/integration.ts",
-     "build:test": "tsc -p tsconfig.test.json",
-     "pretest": "npm run build:rules",
-     "typecheck": "tsc --noEmit",
-     "prepublishOnly": "npm run typecheck && npm test && npm run build"
-   },
+  "scripts": {
+    "build": "tsc",
+    "build:rules": "tsx scripts/compile-rules.ts",
+    "prebuild": "npm run build:rules",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "tsx --test tests/*.test.ts tests/*/*.test.ts",
+    "test:unit": "tsx --test tests/engine/*.test.ts tests/cli/*.test.ts tests/plugin/*.test.ts",
+    "test:integration": "tsx --test tests/integration.test.ts",
+    "test:security": "tsx --test tests/hardening.test.ts tests/pentest.test.ts tests/security-coverage.test.ts",
+    "pretest": "npm run build:rules",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.0.0"
+    "@opencode/plugin": ">=2.0.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.0.0",
+    "@opencode/plugin": "^2.0.29",
     "@types/node": "^22.19.19",
-    "toml": "^3.0.0",
+    "eslint": "^9.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

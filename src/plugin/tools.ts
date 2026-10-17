@@ -1,0 +1,123 @@
+import { scanAndRedactBounded, toSafeFinding } from "../engine/scanner.js";
+import { readAuditLog, resolveAuditPath } from "../engine/audit.js";
+import { loadAllowlist, saveAllowlistEntry } from "../engine/allowlist.js";
+import { NAMED_RULES, ENTROPY_RULES, CLEAN_ROOM_RULES } from "../engine/rules.js";
+import { VERSION } from "../shared/version.js";
+import type { AllowlistEntry, Finding } from "../engine/types.js";
+
+/** Rule count across every rule family. */
+export function ruleCount(): number {
+    return NAMED_RULES.length + CLEAN_ROOM_RULES.length + ENTROPY_RULES.length;
+}
+
+export type ToolDeps = {
+    /** Project-scoped audit path for this plugin instance. */
+    auditPath?: string;
+};
+
+/** `sd_status` */
+export function sdStatus(deps: ToolDeps = {}): string {
+    const path = deps.auditPath ?? resolveAuditPath();
+    let findingCount = 0;
+    try {
+        findingCount = readAuditLog(path).split("\n").filter((l) => l.trim()).length;
+    } catch {
+        // Audit log may not exist yet.
+    }
+    return `strangerDanger v${VERSION}\nRules: ${ruleCount()}\nFindings this session: ${findingCount}\nAudit log: ${path}`;
+}
+
+/** `sd_audit` */
+export function sdAudit(deps: ToolDeps = {}): string {
+    const path = deps.auditPath ?? resolveAuditPath();
+    let log: string;
+    try {
+        log = readAuditLog(path);
+    } catch {
+        return "Audit log not found.";
+    }
+    if (!log.trim()) return "No audit entries yet.";
+    return log
+        .trim()
+        .split("\n")
+        .map((line) => {
+            try {
+                const entry = JSON.parse(line);
+                return `[${entry.timestamp}] ${entry.ruleId} — fingerprint: ${entry.fingerprint} — source: ${entry.source}`;
+            } catch {
+                return line;
+            }
+        })
+        .join("\n");
+}
+
+/** `sd_allowlist_show` */
+export function sdAllowlistShow(): string {
+    const allowlist = loadAllowlist();
+    if (allowlist.entries.length === 0) return "No allowlist entries.";
+    return allowlist.entries
+        .map((e, i) =>
+            `${i + 1}. ${e.description || "(no description)"} | fingerprint: ${e.fingerprint || "—"} | ruleId: ${e.ruleId || "—"} | path: ${e.path || "—"} | regex: ${e.regex || "—"}`,
+        )
+        .join("\n");
+}
+
+/** `sd_allowlist_add` */
+export function sdAllowlistAdd(args: {
+    description?: string;
+    fingerprint?: string;
+    ruleId?: string;
+    path?: string;
+    regex?: string;
+}): string {
+    const entry: AllowlistEntry = {};
+    if (args.description) entry.description = args.description;
+    if (args.fingerprint) entry.fingerprint = args.fingerprint;
+    if (args.ruleId) entry.ruleId = args.ruleId;
+    if (args.path) entry.path = args.path;
+    if (args.regex) entry.regex = args.regex;
+
+    if (!entry.fingerprint && !entry.ruleId && !entry.path && !entry.regex) {
+        return "No allowlist criteria supplied (need one of fingerprint, ruleId, path, regex).";
+    }
+    if (entry.regex) {
+        try {
+            new RegExp(entry.regex);
+        } catch (err) {
+            return `Invalid regex: ${err instanceof Error ? err.message : String(err)}`;
+        }
+    }
+    if (entry.fingerprint && !/^[a-f0-9]{8}$/i.test(entry.fingerprint)) {
+        return "Fingerprint must be 8 hexadecimal characters.";
+    }
+
+    saveAllowlistEntry(entry);
+    return "Allowlist entry added.";
+}
+
+/** Upper bound on content accepted by `sd_scan`. Keeps a model-invoked scan bounded. */
+export const MAX_SD_SCAN_CHARS = 8 * 1024 * 1024;
+
+/**
+ * `sd_scan` — returns secret-free metadata only.
+ *
+ * The input is bounded and scanned with the same chunk-safe path as the hooks,
+ * so a very large `content` argument cannot exhaust memory or hang the server.
+ */
+export function sdScan(args: { content: string; source?: Finding["source"] }): string {
+    const source = args?.source ?? "file";
+    const content = typeof args?.content === "string" ? args.content : "";
+    if (content.length === 0) return "No secrets detected.";
+    if (content.length > MAX_SD_SCAN_CHARS) {
+        return `Content too large to scan: ${content.length} characters exceeds the ${MAX_SD_SCAN_CHARS}-character limit.`;
+    }
+    const { findings, complete, policy } = scanAndRedactBounded(content, source);
+    const note = complete ? "" : `\n\n[strangerdanger: content not fully inspected (${policy})]`;
+    if (findings.length === 0) return `No secrets detected.${note}`;
+    return findings
+        .map((f) => {
+            const safe = toSafeFinding(f, content);
+            return `${safe.ruleId}: ${safe.description}\n  Location: line ${safe.line ?? "?"}, column ${(safe.column ?? 0) + 1}\n  Fingerprint: ${safe.fingerprint}\n  Redaction: ${safe.redaction}`;
+        })
+        .join("\n\n") + note;
+}

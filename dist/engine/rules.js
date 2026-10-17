@@ -51,7 +51,7 @@ export const NAMED_RULES = [
     {
         id: "airtable-personnal-access-token",
         description: "Uncovered a possible Airtable Personal AccessToken, potentially compromising database access and leading to data leakage or alteration.",
-        regex: new RegExp("\\b(pat[[:alnum:]]{14}\\.[a-f0-9]{64})\\b", "g"),
+        regex: new RegExp("\\b(pat[A-Za-z0-9]{14}\\.[a-f0-9]{64})\\b", "g"),
         keywords: ["airtable"],
     },
     {
@@ -111,13 +111,13 @@ export const NAMED_RULES = [
     {
         id: "atlassian-api-token",
         description: "Detected an Atlassian API token, posing a threat to project management and collaboration tool security and data confidentiality.",
-        regex: new RegExp("[\\w.-]{0,50}?(?:(?-i:ATLASSIAN|[Aa]tlassian)|(?-i:CONFLUENCE|[Cc]onfluence)|(?-i:JIRA|[Jj]ira))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{20}[a-f0-9]{4})(?:[\\x60'\"\\s;]|\\\\[nr]|$)|\\b(ATATT3[A-Za-z0-9_\\-=]{186})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:(?:ATLASSIAN|[Aa]tlassian)|(?:CONFLUENCE|[Cc]onfluence)|(?:JIRA|[Jj]ira))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{20}[a-f0-9]{4})(?:[\\x60'\"\\s;]|\\\\[nr]|$)|\\b(ATATT3[A-Za-z0-9_\\-=]{186})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["atlassian", "confluence", "jira", "atatt3"], entropy: 3.5,
     },
     {
         id: "authress-service-client-access-key",
         description: "Uncovered a possible Authress Service Client Access Key, which may compromise access control services and sensitive data.",
-        regex: new RegExp("\\b((?:sc|ext|scauth|authress)_[a-z0-9]{5,30}\\.[a-z0-9]{4,6}\\.(?-i:acc)[_-][a-z0-9-]{10,32}\\.[a-z0-9+/_=-]{30,120})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("\\b((?:sc|ext|scauth|authress)_[a-z0-9]{5,30}\\.[a-z0-9]{4,6}\\.(?:acc)[_-][a-z0-9-]{10,32}\\.[a-z0-9+/_=-]{30,120})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["sc_", "ext_", "scauth_", "authress_"], entropy: 2,
     },
     {
@@ -177,7 +177,7 @@ export const NAMED_RULES = [
     {
         id: "cisco-meraki-api-key",
         description: "Cisco Meraki is a cloud-managed IT solution that provides networking, security, and device management through an easy-to-use interface.",
-        regex: new RegExp("[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Mm]eraki|MERAKI))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9a-f]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Mm]eraki|MERAKI))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9a-f]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["meraki"], entropy: 3,
     },
     {
@@ -219,7 +219,7 @@ export const NAMED_RULES = [
     {
         id: "cohere-api-token",
         description: "Identified a Cohere Token, posing a risk of unauthorized access to AI services and data manipulation.",
-        regex: new RegExp("[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:cohere|CO_API_KEY)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-zA-Z0-9]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:cohere|CO_API_KEY)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-zA-Z0-9]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["cohere", "co_api_key"], entropy: 4,
     },
     {
@@ -249,13 +249,13 @@ export const NAMED_RULES = [
     {
         id: "curl-auth-header",
         description: "Discovered a potential authorization token provided in a curl command header, which could compromise the curl accessed resource.",
-        regex: new RegExp("\\bcurl\\b(?:.*?|.*?(?:[\\r\\n]{1,2}.*?){1,5})[ \\t\\n\\r](?:-H|--header)(?:=|[ \\t]{0,5})(?:\"(?:Authorization:[ \\t]{0,5}(?:Basic[ \\t]([a-z0-9+/]{8,}={0,3})|(?:Bearer|(?:Api-)?Token)[ \\t]([\\w=~@.+/-]{8,})|([\\w=~@.+/-]{8,}))|(?:(?:X-(?:[a-z]+-)?)?(?:Api-?)?(?:Key|Token)):[ \\t]{0,5}([\\w=~@.+/-]{8,}))\"|'(?:Authorization:[ \\t]{0,5}(?:Basic[ \\t]([a-z0-9+/]{8,}={0,3})|(?:Bearer|(?:Api-)?Token)[ \\t]([\\w=~@.+/-]{8,})|([\\w=~@.+/-]{8,}))|(?:(?:X-(?:[a-z]+-)?)?(?:Api-?)?(?:Key|Token)):[ \\t]{0,5}([\\w=~@.+/-]{8,}))')(?:\\B|\\s|\\z)", "gi"),
+        regex: new RegExp("\\bcurl\\b(?:.*?|.*?(?:[\\r\\n]{1,2}.*?){1,5})[ \\t\\n\\r](?:-H|--header)(?:=|[ \\t]{0,5})(?:\"(?:Authorization:[ \\t]{0,5}(?:Basic[ \\t]([a-z0-9+/]{8,}={0,3})|(?:Bearer|(?:Api-)?Token)[ \\t]([\\w=~@.+/-]{8,})|([\\w=~@.+/-]{8,}))|(?:(?:X-(?:[a-z]+-)?)?(?:Api-?)?(?:Key|Token)):[ \\t]{0,5}([\\w=~@.+/-]{8,}))\"|'(?:Authorization:[ \\t]{0,5}(?:Basic[ \\t]([a-z0-9+/]{8,}={0,3})|(?:Bearer|(?:Api-)?Token)[ \\t]([\\w=~@.+/-]{8,})|([\\w=~@.+/-]{8,}))|(?:(?:X-(?:[a-z]+-)?)?(?:Api-?)?(?:Key|Token)):[ \\t]{0,5}([\\w=~@.+/-]{8,}))')(?:\\B|\\s|$)", "gi"),
         keywords: ["curl"], entropy: 2.75,
     },
     {
         id: "curl-auth-user",
         description: "Discovered a potential basic authorization token provided in a curl command, which could compromise the curl accessed resource.",
-        regex: new RegExp("\\bcurl\\b(?:.*|.*(?:[\\r\\n]{1,2}.*){1,5})[ \\t\\n\\r](?:-u|--user)(?:=|[ \\t]{0,5})(\"(:[^\"]{3,}|[^:\"]{3,}:|[^:\"]{3,}:[^\"]{3,})\"|'([^:']{3,}:[^']{3,})'|((?:\"[^\"]{3,}\"|'[^']{3,}'|[\\w$@.-]+):(?:\"[^\"]{3,}\"|'[^']{3,}'|[\\w${}@.-]+)))(?:\\s|\\z)", "g"),
+        regex: new RegExp("\\bcurl\\b(?:.*|.*(?:[\\r\\n]{1,2}.*){1,5})[ \\t\\n\\r](?:-u|--user)(?:=|[ \\t]{0,5})(\"(:[^\"]{3,}|[^:\"]{3,}:|[^:\"]{3,}:[^\"]{3,})\"|'([^:']{3,}:[^']{3,})'|((?:\"[^\"]{3,}\"|'[^']{3,}'|[\\w$@.-]+):(?:\"[^\"]{3,}\"|'[^']{3,}'|[\\w${}@.-]+)))(?:\\s|$)", "g"),
         keywords: ["curl"], entropy: 2,
     },
     {
@@ -369,7 +369,7 @@ export const NAMED_RULES = [
     {
         id: "etsy-access-token",
         description: "Found an Etsy Access Token, potentially compromising Etsy shop management and customer data.",
-        regex: new RegExp("[\\w.-]{0,50}?(?:(?-i:ETSY|[Ee]tsy))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{24})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:(?:ETSY|[Ee]tsy))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{24})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["etsy"], entropy: 3,
     },
     {
@@ -471,7 +471,7 @@ export const NAMED_RULES = [
     {
         id: "generic-api-key",
         description: "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
-        regex: new RegExp("[\\w.-]{0,50}?(?:access|auth|(?-i:[Aa]pi|API)|credential|creds|key|passw(?:or)?d|secret|token)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([\\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:access|auth|(?:[Aa]pi|API)|credential|creds|key|passw(?:or)?d|secret|token)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([\\w.=-]{10,150}|[a-z0-9][a-z0-9+/]{11,}={0,3})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["access", "api", "auth", "key", "credential", "creds", "passwd", "password", "secret", "token"], entropy: 3.5,
     },
     {
@@ -633,7 +633,7 @@ export const NAMED_RULES = [
     {
         id: "hashicorp-tf-api-token",
         description: "Uncovered a HashiCorp Terraform user/org API token, which may lead to unauthorized infrastructure management and security breaches.",
-        regex: new RegExp("[a-z0-9]{14}\\.(?-i:atlasv1)\\.[a-z0-9\\-_=]{60,70}", "gi"),
+        regex: new RegExp("[a-z0-9]{14}\\.(?:atlasv1)\\.[a-z0-9\\-_=]{60,70}", "gi"),
         keywords: ["atlasv1"], entropy: 3.5,
     },
     {
@@ -663,13 +663,13 @@ export const NAMED_RULES = [
     {
         id: "huggingface-access-token",
         description: "Discovered a Hugging Face Access token, which could lead to unauthorized access to AI models and sensitive data.",
-        regex: new RegExp("\\b(hf_(?i:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("\\b(hf_(?:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["hf_"], entropy: 2,
     },
     {
         id: "huggingface-organization-api-token",
         description: "Uncovered a Hugging Face Organization API token, potentially compromising AI organization accounts and associated data.",
-        regex: new RegExp("\\b(api_org_(?i:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("\\b(api_org_(?:[a-z]{34}))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["api_org_"], entropy: 2,
     },
     {
@@ -723,7 +723,7 @@ export const NAMED_RULES = [
     {
         id: "kubernetes-secret-yaml",
         description: "Possible Kubernetes Secret detected, posing a risk of leaking credentials/tokens from your deployments",
-        regex: new RegExp("(?:\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?(?s:.){0,200}?\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))|\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))(?s:.){0,200}?\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?)", "gi"),
+        regex: new RegExp("(?:\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?(?:.){0,200}?\\bdata:(?:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))|\\bdata:(?:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))(?:.){0,200}?\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?)", "gis"),
         keywords: ["secret"],
     },
     {
@@ -915,7 +915,7 @@ export const NAMED_RULES = [
     {
         id: "okta-access-token",
         description: "Identified an Okta Access Token, which may compromise identity management services and user authentication data.",
-        regex: new RegExp("[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Oo]kta|OKTA))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(00[\\w=\\-]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Oo]kta|OKTA))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(00[\\w=\\-]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["okta"], entropy: 4,
     },
     {
@@ -927,7 +927,7 @@ export const NAMED_RULES = [
     {
         id: "openshift-user-token",
         description: "Found an OpenShift user token, potentially compromising an OpenShift/Kubernetes cluster.",
-        regex: new RegExp("\\b(sha256~[\\w-]{43})(?:[^\\w-]|\\z)", "g"),
+        regex: new RegExp("\\b(sha256~[\\w-]{43})(?:[^\\w-]|$)", "g"),
         keywords: ["sha256~"], entropy: 3.5,
     },
     {
@@ -993,7 +993,7 @@ export const NAMED_RULES = [
     {
         id: "privateai-api-token",
         description: "Identified a PrivateAI Token, posing a risk of unauthorized access to AI services and data manipulation.",
-        regex: new RegExp("[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:private[_-]?ai)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{32})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:private[_-]?ai)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{32})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["privateai", "private_ai", "private-ai"], entropy: 3,
     },
     {
@@ -1065,7 +1065,7 @@ export const NAMED_RULES = [
     {
         id: "sentry-org-token",
         description: "Found a Sentry.io Organization Token, risking unauthorized access to error tracking services and sensitive application data.",
-        regex: new RegExp("\\bsntrys_eyJpYXQiO[a-zA-Z0-9+/]{10,200}(?:LCJyZWdpb25fdXJs|InJlZ2lvbl91cmwi|cmVnaW9uX3VybCI6)[a-zA-Z0-9+/]{10,200}={0,2}_[a-zA-Z0-9+/]{43}(?:[^a-zA-Z0-9+/]|\\z)", "g"),
+        regex: new RegExp("\\bsntrys_eyJpYXQiO[a-zA-Z0-9+/]{10,200}(?:LCJyZWdpb25fdXJs|InJlZ2lvbl91cmwi|cmVnaW9uX3VybCI6)[a-zA-Z0-9+/]{10,200}={0,2}_[a-zA-Z0-9+/]{43}(?:[^a-zA-Z0-9+/]|$)", "g"),
         keywords: ["sntrys_eyjpyxqio"], entropy: 4.5,
     },
     {
@@ -1227,19 +1227,19 @@ export const NAMED_RULES = [
     {
         id: "sumologic-access-id",
         description: "Discovered a SumoLogic Access ID, potentially compromising log management services and data analytics integrity.",
-        regex: new RegExp("[\\w.-]{0,50}?(?i:[\\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(su[a-zA-Z0-9]{12})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:[\\w.-]{0,50}?(?:(?:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3})(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(su[a-zA-Z0-9]{12})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["sumo"], entropy: 3,
     },
     {
         id: "sumologic-access-token",
         description: "Uncovered a SumoLogic Access Token, which could lead to unauthorized access to log data and analytics insights.",
-        regex: new RegExp("[\\w.-]{0,50}?(?:(?-i:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:(?:[Ss]umo|SUMO))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["sumo"], entropy: 3,
     },
     {
         id: "telegram-bot-api-token",
         description: "Detected a Telegram Bot API Token, risking unauthorized bot operations and message interception on Telegram.",
-        regex: new RegExp("[\\w.-]{0,50}?(?:telegr)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\\-]{34})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
+        regex: new RegExp("[\\w.-]{0,50}?(?:telegr)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?:A)[a-z0-9_\\-]{34})(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["telegr"],
     },
     {
@@ -1305,7 +1305,7 @@ export const NAMED_RULES = [
     {
         id: "vault-service-token",
         description: "Identified a Vault Service Token, potentially compromising infrastructure security and access to sensitive credentials.",
-        regex: new RegExp("\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?i:[a-z0-9]{24})))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "g"),
+        regex: new RegExp("\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?:[a-z0-9]{24})))(?:[\\x60'\"\\s;]|\\\\[nr]|$)", "gi"),
         keywords: ["hvs.", "s."], entropy: 3.5,
     },
     {

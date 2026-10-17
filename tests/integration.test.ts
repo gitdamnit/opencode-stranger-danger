@@ -3,10 +3,10 @@ import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { scanAndRedact } from "../../src/engine/scanner.js";
-import { loadAllowlist, saveAllowlistEntry, filterByAllowlist } from "../../src/engine/allowlist.js";
-import { writeAudit, readAuditLog, setAuditPath } from "../../src/engine/audit.js";
-import { fingerprint } from "../../src/shared/fingerprint.js";
+import { scanAndRedact } from "../src/engine/scanner.js";
+import { loadAllowlist, saveAllowlistEntry, filterByAllowlist } from "../src/engine/allowlist.js";
+import { writeAuditBatch, auditEntryFromFinding, readAuditLog, setAuditPath } from "../src/engine/audit.js";
+import { fingerprint } from "../src/shared/fingerprint.js";
 
 describe("integration — scan → redact → verify pipeline", () => {
     test("full pipeline: scan file with secret, redact, verify clean", () => {
@@ -78,7 +78,7 @@ describe("integration — scan → redact → verify pipeline", () => {
         try { fs.unlinkSync(tmpAllowlist); } catch {}
     });
 
-    test("audit log records findings from scanAndRedact", async () => {
+    test("audit records findings without storing raw secrets", () => {
         const tmpDir = "/tmp/sd-integration-audit";
         const filePath = path.join(tmpDir, "config.ts");
         const auditPath = path.join(tmpDir, "audit.jsonl");
@@ -90,31 +90,31 @@ describe("integration — scan → redact → verify pipeline", () => {
             const content = 'const key = "AKIAIOSFODNN7EXAMPLE";';
             fs.writeFileSync(filePath, content);
 
-            // scanAndRedact writes to audit log
+            // scanAndRedact is pure detection + redaction; the caller records
+            // audit entries (the plugin/CLI layers do this at their boundaries).
             const { findings } = scanAndRedact(content, "file", filePath);
+            assert.ok(findings.length > 0);
+            writeAuditBatch(findings.map((f) => auditEntryFromFinding(f, { filePath, sessionId: "sess-1" })));
 
-            // Verify audit log was written
-            assert.ok(fs.existsSync(auditPath) || findings.length === 0);
+            assert.ok(fs.existsSync(auditPath));
+            const logContent = readAuditLog();
+            const lines = logContent.trim().split("\n").filter(Boolean);
+            assert.ok(lines.length >= 1);
 
-            if (findings.length > 0) {
-                const logContent = readAuditLog();
-                assert.ok(logContent.length > 0);
-                const lines = logContent.trim().split("\n").filter(Boolean);
-                assert.ok(lines.length >= 1);
-
-                const lastEntry = JSON.parse(lines[lines.length - 1]);
-                assert.strictEqual(lastEntry.ruleId, findings[0].ruleId);
-                assert.strictEqual(lastEntry.source, "file");
-                assert.ok(lastEntry.fingerprint);
-            }
+            const lastEntry = JSON.parse(lines[lines.length - 1]);
+            assert.strictEqual(lastEntry.ruleId, findings[0].ruleId);
+            assert.strictEqual(lastEntry.source, "file");
+            assert.strictEqual(lastEntry.sessionId, "sess-1");
+            assert.ok(lastEntry.fingerprint);
+            assert.ok(!logContent.includes("AKIAIOSFODNN7EXAMPLE"), "audit log must not contain the raw secret");
         } finally {
             try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
         }
     });
 
-    test("clean fixture yields zero findings through scanAndRedact", () => {
+    test("clean fixture yields zero findings through scanAndRedact", async () => {
         // Use the clean fixture
-        const { cleanContent } = await import("../fixtures/clean.js");
+        const { cleanContent } = await import("./fixtures/clean.js");
         const { findings, redacted } = scanAndRedact(cleanContent, "file");
         assert.strictEqual(findings.length, 0);
         assert.strictEqual(redacted, cleanContent);
@@ -123,7 +123,7 @@ describe("integration — scan → redact → verify pipeline", () => {
     test("multiple secret types detected in single scan", () => {
         const content = `
 const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
-const GH_TOKEN = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12";
+const GH_TOKEN = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef1234";
 const MONGO = "mongodb+srv://admin:password@cluster0.example.mongodb.net/mydb";
 const JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 `;

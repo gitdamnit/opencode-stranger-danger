@@ -21,6 +21,7 @@ export type AuditEntry = {
     ruleId: string;
     description: string;
     fingerprint: string;
+    filePath?: string;
 };
 export type AllowlistEntry = {
     description?: string;

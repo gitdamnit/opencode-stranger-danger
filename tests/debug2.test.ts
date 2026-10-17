@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { NAMED_RULES } from "../../src/engine/rules.js";
+import { NAMED_RULES } from "../src/engine/rules.js";
 
 describe("debug", () => {
     test("works", () => {

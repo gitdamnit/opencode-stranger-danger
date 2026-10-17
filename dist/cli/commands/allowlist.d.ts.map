@@ -1,1 +1,1 @@
-{"version":3,"file":"allowlist.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/allowlist.ts"],"names":[],"mappings":"AAEA,wBAAsB,YAAY,CAAC,UAAU,EAAE,MAAM,EAAE,WAAW,EAAE,MAAM,EAAE,GAAG,OAAO,CAAC,IAAI,CAAC,CAkC3F"}
+{"version":3,"file":"allowlist.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/allowlist.ts"],"names":[],"mappings":"AAsBA,wBAAsB,YAAY,CAC9B,UAAU,EAAE,MAAM,EAClB,WAAW,EAAE,MAAM,EAAE,EACrB,KAAK,GAAE,MAAM,CAAC,MAAM,EAAE,MAAM,GAAG,OAAO,CAAM,GAC7C,OAAO,CAAC,IAAI,CAAC,CA4Cf"}

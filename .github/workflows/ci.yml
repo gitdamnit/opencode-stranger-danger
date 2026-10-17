@@ -11,30 +11,43 @@ on:
       - master
 
 jobs:
-  test:
-    name: Test and Build
+  verify:
+    name: Typecheck, lint, build and test
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: bun install
+        run: npm ci
+
+      - name: Compile detection rules from TOML
+        run: npm run build:rules
 
       - name: Typecheck
-        run: bun run typecheck --if-present
+        run: npm run typecheck
 
       - name: Lint
-        run: bun run lint --if-present
-
-      - name: Test
-        run: bun test
+        run: npm run lint
 
       - name: Build
-        run: bun run build --if-present
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Security regression tests
+        run: npm run test:security
+
+      - name: Package validation (pack, install, exercise the artifact)
+        run: npm run verify:package
