@@ -9,10 +9,10 @@ Released
 <!-- Machine-maintained by `prodoc update`. Do not hand-edit. -->
 <!-- prodoc:observed:start -->
 <!-- Observed from Git metadata only, by `prodoc update`. This block is not evidence that the implementation or its tests are correct; record that under `## Verification Evidence`. -->
-- **Observed branch:** feat/stranger-danger-v2-hardening
-- **Observed commit:** 64929cbaf509dc1b21011d13997c06dad92d6189
+- **Observed branch:** master
+- **Observed commit:** 6f958dc5cf4f9c0700a8aaa0ea2ef42ad04c7e5e
 - **Observed working tree:** dirty
-- **Observed at:** 2026-10-17T00:29:14Z
+- **Observed at:** 2026-10-30T01:48:47Z
 <!-- prodoc:observed:end -->
 
 ## Verification Evidence
@@ -37,7 +37,7 @@ Released
 - [Implemented] CI and npm publish workflows — `.github/workflows/ci.yml`, `.github/workflows/publish.yml`
 - [Implemented] MIT `LICENSE` and vulnerability-disclosure `SECURITY.md` — `LICENSE`, `SECURITY.md`
 - [Published] GitHub release `v0.2.0` at merge commit `b634ce5cb84c533c1fd1f6802d922b6e812e5afb` — https://github.com/gitdamnit/opencode-stranger-danger/releases/tag/v0.2.0
-- [Blocked] npm publication of `@gitdamnit/opencode-stranger-danger@0.2.0` — registry credentials absent (`ENEEDAUTH`, no `NPM_TOKEN`)
+- [Published] npm `@gitdamnit/opencode-stranger-danger@0.2.1` then `0.2.2` (version-reporting fix) through the manual OIDC workflow — https://www.npmjs.com/package/@gitdamnit/opencode-stranger-danger
 
 ## Tests
 
@@ -55,6 +55,9 @@ Released
 | clean install | clone `v0.2.0` → `npm pack` → install into isolated project | Pass | `/tmp/opencode/clean-install.log` |
 | release CI | `CI` on merge commit `b634ce5` | Pass | https://github.com/gitdamnit/opencode-stranger-danger/actions/runs/38986400189 |
 | npm publish (tag) | `Publish to npm` on tag `v0.2.0` | Fail (expected: `ENEEDAUTH`) | https://github.com/gitdamnit/opencode-stranger-danger/actions/runs/38986473186 |
+| npm publish (OIDC) | `Publish to npm` on tag `v0.2.2` | Pass (signed provenance) | https://github.com/gitdamnit/opencode-stranger-danger/actions/runs/40987247633 |
+| registry clean install | `npm install @gitdamnit/opencode-stranger-danger@0.2.2` in an empty project | Pass (`sd version` → 0.2.2, 236 rules, plugin + engine exports) | https://www.npmjs.com/package/@gitdamnit/opencode-stranger-danger |
+| OpenCode runtime load | `opencode run` with all three toolkit plugins configured | Pass (none failed to load) | OpenCode 2.2.1, local |
 
 ## Known Defects
 
@@ -62,21 +65,30 @@ Released
 
 ## Blockers
 
-- npm publication is blocked on registry ownership/authentication: the `@gitdamnit` scope is not published and no `NPM_TOKEN` secret is configured. GitHub publication succeeded and is unaffected.
+- None. `0.2.2` is published to the public npm registry with signed provenance.
 
 ## Next Actions
 
-1. To publish to npm: create/claim the `@gitdamnit` scope, authenticate (`npm login`, or set the `NPM_TOKEN` repository secret), then re-run the `publish.yml` workflow for tag `v0.2.0` (or run `npm publish --access public` from a clean checkout of the tag). `publishConfig.access` is already `public` and `prepublishOnly` gates on typecheck, lint, tests, and build.
-2. After npm publication, install with the documented `plugins: ["@gitdamnit/opencode-stranger-danger"]` form and re-verify.
+1. None for this release. Future releases dispatch the manual `Publish to npm`
+   workflow against their release tag.
+2. The `v0.2.0` GitHub release remains GitHub-only by design; npm's 0.2 line
+   starts at `0.2.1` because `v0.2.0` tags a commit whose `package.json` named a
+   package that does not exist (see `D-0007`).
 
 ## Release Status
 
-**v0.2.0 released on GitHub.** Annotated tag `v0.2.0` → merge commit
-`b634ce5cb84c533c1fd1f6802d922b6e812e5afb`; release
-https://github.com/gitdamnit/opencode-stranger-danger/releases/tag/v0.2.0.
-Source is byte-identical to the Docker-verified commit
-`9cfd8135429bffb2e5e32e97f23bec3f5b6277bd` (OpenCode `2.0.21`, Node `22.23.3`,
-image `opencode-plugin-lab:local`
-`sha256:76ebd805cd548a638b9b1508e5f16e680cd5b082cd3f3561d28f2f2301336ff1`;
-145/145 lab, 322/322 local). **npm is NOT published** — the tag run failed at the
-publish step with `ENEEDAUTH`; there is no registry artifact yet.
+**v0.2.2 — RELEASED (GitHub + npm).** Annotated tag `v0.2.2` on `master`.
+npm `latest` is `0.2.2`:
+https://www.npmjs.com/package/@gitdamnit/opencode-stranger-danger
+
+Publication ran through the manual OIDC workflow
+(https://github.com/gitdamnit/opencode-stranger-danger/actions/runs/40987247633)
+and signed a provenance statement. Verified by installing `0.2.2` from the
+registry into an empty project: `sd version` reports `v0.2.2`, `sd rules` reports
+236 rules, the default export is `gitdamnit.stranger-danger` with a `setup`
+function, `./engine` exports `scan`, and the root `index.js` is present. All
+three toolkit plugins were then loaded together in a real OpenCode `2.2.1`
+runtime with no load failures.
+
+`0.2.1` was published first and is immutable; it reported `0.2.0` because
+`src/shared/version.ts` had not been bumped, which `0.2.2` fixes.
