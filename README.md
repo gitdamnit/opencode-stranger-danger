@@ -1,12 +1,12 @@
 ![strangerDanger logo](./strangerdanger2.jpeg)
 
-# @gitdamnit/stranger-danger
+# @gitdamnit/opencode-stranger-danger
 
 Secret and PII redaction guard for AI coding agents.
 
-[![npm version](https://img.shields.io/npm/v/@gitdamnit/stranger-danger.svg)](https://www.npmjs.com/package/@gitdamnit/stranger-danger)
-[![license](https://img.shields.io/npm/l/@gitdamnit/stranger-danger.svg)](LICENSE)
-[![node](https://img.shields.io/node/v/@gitdamnit/stranger-danger.svg)](https://nodejs.org)
+[![npm version](https://img.shields.io/npm/v/@gitdamnit/opencode-stranger-danger.svg)](https://www.npmjs.com/package/@gitdamnit/opencode-stranger-danger)
+[![license](https://img.shields.io/npm/l/@gitdamnit/opencode-stranger-danger.svg)](LICENSE)
+[![node](https://img.shields.io/node/v/@gitdamnit/opencode-stranger-danger.svg)](https://nodejs.org)
 
 ## The Problem
 
@@ -45,11 +45,11 @@ Add to your `opencode.jsonc` (`plugins`, not the V1 `plugin` key):
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["@gitdamnit/stranger-danger"]
+  "plugins": ["@gitdamnit/opencode-stranger-danger"]
 }
 ```
 
-> **0.2.0 is not yet on npm.** Until it is published, install it from the
+> **0.2.1 is not yet on npm.** Until it is published, install it from the
 > repository or a local checkout — see
 > [Loading from a directory or a checkout](#loading-from-a-directory-or-a-checkout)
 > below. The `plugins` entry above resolves once the package is published.
@@ -79,7 +79,7 @@ is unavailable, the plugin did not load.
 ### Standalone CLI
 
 ```bash
-npm install -g @gitdamnit/stranger-danger   # once published to npm
+npm install -g @gitdamnit/opencode-stranger-danger   # once published to npm
 ```
 
 ### Use with envsitter-guard
@@ -288,7 +288,7 @@ The only interop surface is the semver-versioned, read-only engine export:
 
 ```js
 import { scan, redact, scanAndRedact, scanAndRedactBounded, toSafeFinding }
-  from "@gitdamnit/stranger-danger/engine";
+  from "@gitdamnit/opencode-stranger-danger/engine";
 ```
 
 A companion plugin or the Docker Plugin Test Lab may call these to sanitize or

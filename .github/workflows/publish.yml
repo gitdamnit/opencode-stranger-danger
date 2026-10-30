@@ -1,9 +1,14 @@
+# Manual release publishing using npm Trusted Publishing (OIDC).
+# Never triggered by a GitHub release or tag push.
 name: Publish to npm
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (for example v0.3.0)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,48 +16,56 @@ permissions:
 
 jobs:
   publish:
-    name: Publish package
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Validate input and checkout tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Expected a stable release tag such as v1.2.3" >&2
+            exit 1
+          fi
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
 
-      - name: Setup Node
+      - name: Set up Node for npm Trusted Publishing
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          registry-url: https://registry.npmjs.org/
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Require current npm OIDC client
+        run: npm install --global 'npm@^11.5.1'
+
+      - name: Verify version and tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          actual="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$actual" || {
+            echo "Version mismatch: $RELEASE_TAG vs $actual" >&2
+            exit 1
+          }
+          echo "Verified release $RELEASE_TAG"
 
       - name: Install dependencies
         run: npm ci
+      - name: Build and validate
+        run: |
+          npm run build
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+          npm run test:integration
+          npm run test:security
+          npm run verify:package
 
-      - name: Compile detection rules from TOML
-        run: npm run build:rules
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm run test:unit
-
-      - name: Integration tests
-        run: npm run test:integration
-
-      - name: Security regression tests
-        run: npm run test:security
-
-      - name: Build
-        run: npm run build
-
-      - name: Package validation
-        run: npm run verify:package
-
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish using OIDC
+        run: npm publish --access public

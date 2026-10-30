@@ -1,9 +1,29 @@
 # Changelog
 
+## 0.2.1 (2026-10-29)
+
+Packaging and npm-identity fix. The 0.2.0 source was distributed only as a
+GitHub release; it was never installable from npm.
+
+### Fixed
+- **Restored the published npm package identity.** `package.json` named the
+  package `@gitdamnit/stranger-danger`, which has never existed on npm, so
+  `npm install` could not resolve it. The package is again
+  `@gitdamnit/opencode-stranger-danger`, the name published since 0.1.0.
+- **`npm run verify:package` no longer hardcodes the package name.** It reads
+  the name from `package.json`, so packaging validation cannot drift from what
+  is actually published. The previous hardcoding is what made the packed-artifact
+  check fail as soon as the name was corrected.
+
+### Changed
+- **npm publication is manual and OIDC-based.** `.github/workflows/publish.yml`
+  now runs only on `workflow_dispatch`, checks out and verifies the release tag,
+  and publishes through npm Trusted Publishing instead of an `NPM_TOKEN` secret.
+
 ## 0.2.0 (2026-10-16)
 
 Security hardening and OpenCode V2 migration. Published as a GitHub release;
-npm publication of `@gitdamnit/stranger-danger` is pending registry setup
+npm publication of `@gitdamnit/opencode-stranger-danger` is pending registry setup
 (install from the repository in the meantime).
 
 ### Security fixes
@@ -73,7 +93,7 @@ npm publication of `@gitdamnit/stranger-danger` is pending registry setup
   broken companion or bad event cannot cascade.
 - Documented the ordering-independent guarantee (the `session.context` hook is
   the backstop) and the single optional, read-only, semver-versioned interop
-  surface (`@gitdamnit/stranger-danger/engine`).
+  surface (`@gitdamnit/opencode-stranger-danger/engine`).
 - Removed a stale reference to the retired CheapCode project from
   `scripts/write_fixture.ts`; it now writes only inside this repository.
 - Added an independence test suite (isolated instances, session isolation,

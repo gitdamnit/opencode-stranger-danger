@@ -37,7 +37,7 @@ Released
 - [Implemented] CI and npm publish workflows — `.github/workflows/ci.yml`, `.github/workflows/publish.yml`
 - [Implemented] MIT `LICENSE` and vulnerability-disclosure `SECURITY.md` — `LICENSE`, `SECURITY.md`
 - [Published] GitHub release `v0.2.0` at merge commit `b634ce5cb84c533c1fd1f6802d922b6e812e5afb` — https://github.com/gitdamnit/opencode-stranger-danger/releases/tag/v0.2.0
-- [Blocked] npm publication of `@gitdamnit/stranger-danger@0.2.0` — registry credentials absent (`ENEEDAUTH`, no `NPM_TOKEN`)
+- [Blocked] npm publication of `@gitdamnit/opencode-stranger-danger@0.2.0` — registry credentials absent (`ENEEDAUTH`, no `NPM_TOKEN`)
 
 ## Tests
 
@@ -67,7 +67,7 @@ Released
 ## Next Actions
 
 1. To publish to npm: create/claim the `@gitdamnit` scope, authenticate (`npm login`, or set the `NPM_TOKEN` repository secret), then re-run the `publish.yml` workflow for tag `v0.2.0` (or run `npm publish --access public` from a clean checkout of the tag). `publishConfig.access` is already `public` and `prepublishOnly` gates on typecheck, lint, tests, and build.
-2. After npm publication, install with the documented `plugins: ["@gitdamnit/stranger-danger"]` form and re-verify.
+2. After npm publication, install with the documented `plugins: ["@gitdamnit/opencode-stranger-danger"]` form and re-verify.
 
 ## Release Status
 

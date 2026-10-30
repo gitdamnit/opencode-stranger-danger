@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-**Name:** strangerDanger (`@gitdamnit/stranger-danger`)
+**Name:** strangerDanger (`@gitdamnit/opencode-stranger-danger`)
 **Repository:** https://github.com/gitdamnit/opencode-stranger-danger
 **Licence:** MIT
 **Maintainer:** gitdamnit (Evan Zellner)
