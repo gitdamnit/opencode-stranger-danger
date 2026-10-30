@@ -142,3 +142,29 @@ Allowed statuses: `Proposed`, `Accepted`, `Superseded`, `Deprecated`, `Rejected`
   the npm step because `NPM_TOKEN` is unset. This is expected and does not affect
   the GitHub release. npm distribution must not be reported as complete.
 - **Supersedes:** None
+
+### D-0007 — Publish under the existing `@gitdamnit/opencode-stranger-danger` identity as 0.2.1
+
+- **Date:** 2026-10-29
+- **Status:** Accepted
+- **Context:** `@gitdamnit/opencode-stranger-danger@0.1.0` is the package that has
+  been public on npm since 2026-05-14. The 0.2.0 release commit renamed the
+  package to `@gitdamnit/stranger-danger`, a name that has never existed on npm,
+  so the 0.2.0 GitHub release could not be installed from the registry. The
+  `v0.2.0` tag already points at that commit and its GitHub release is public.
+- **Alternatives Considered:** publish `@gitdamnit/stranger-danger` as a second
+  package (rejected: splits the install base, silently abandons the existing
+  package, and contradicts the documented install command); move or delete the
+  `v0.2.0` tag so it can be reused (rejected: rewrites published history);
+  publish 0.2.0 from an untagged commit (rejected: breaks tag-to-artifact
+  provenance, which npm trusted publishing attests).
+- **Decision:** Keep `@gitdamnit/opencode-stranger-danger` as the package
+  identity, release the identity and packaging fixes as `0.2.1`, tag it, and
+  publish through npm Trusted Publishing (GitHub Actions OIDC).
+- **Rationale:** Restores installability under the name users already have, and
+  a patch bump keeps 0.2.0's unreachable release from being silently
+  overwritten or misrepresented.
+- **Consequences:** npm's first 0.2.x artifact is 0.2.1, not 0.2.0. `D-0006`'s
+  "npm publication is a separate, manual step" still holds; the manual step is
+  now the OIDC `publish.yml` workflow rather than an `NPM_TOKEN` tag push.
+- **Supersedes:** None

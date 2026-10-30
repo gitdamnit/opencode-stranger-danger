@@ -14,6 +14,13 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const run = (cmd, args, opts = {}) =>
     execFileSync(cmd, args, { stdio: "pipe", encoding: "utf8", ...opts });
 
+// Derive the identity from package.json so the validation can never drift from
+// the name that is actually published.
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const pkgName = pkg.name;
+const pkgPath = pkgName.split("/");
+const tarballPrefix = pkgName.replace(/^@/, "").replace(/\//g, "-") + "-";
+
 function step(label, fn) {
     process.stdout.write(`- ${label} ... `);
     const result = fn();
@@ -61,22 +68,21 @@ try {
     });
 
     step("standalone engine export resolves", () => {
-        const r = run(process.execPath, ["--input-type=module", "-e",
-            "import('@gitdamnit/stranger-danger/engine').then(m=>{if(typeof m.scan!=='function')process.exit(1)})",
+        run(process.execPath, ["--input-type=module", "-e",
+            `import(${JSON.stringify(`${pkgName}/engine`)}).then(m=>{if(typeof m.scan!=='function')process.exit(1)})`,
         ], { cwd: workdir });
-        void r;
     });
 
     step("plugin default export has the V2 shape", () => {
         run(process.execPath, ["--input-type=module", "-e",
-            "import('@gitdamnit/stranger-danger').then(m=>{const p=m.default;if(!p||p.id!=='gitdamnit.stranger-danger'||typeof p.setup!=='function')process.exit(1)})",
+            `import(${JSON.stringify(pkgName)}).then(m=>{const p=m.default;if(!p||p.id!=='gitdamnit.stranger-danger'||typeof p.setup!=='function')process.exit(1)})`,
         ], { cwd: workdir });
     });
 
     // OpenCode resolves a plugin *directory* to <dir>/index.{ts,js} and ignores
     // main/exports, so the shipped package must include a root entrypoint.
     step("published package includes the root directory entrypoint", () => {
-        const entry = join(workdir, "node_modules", "@gitdamnit", "stranger-danger", "index.js");
+        const entry = join(workdir, "node_modules", ...pkgPath, "index.js");
         if (!existsSync(entry)) throw new Error("package is missing root index.js (directory installs would not load)");
         const src = readFileSync(entry, "utf8");
         if (!/export\s*\{\s*default\s*\}/.test(src)) throw new Error("root index.js does not export a default plugin");
@@ -96,7 +102,7 @@ try {
     // Remove any stray tarballs in the repo root.
     try {
         for (const f of readdirSync(root)) {
-            if (f.startsWith("gitdamnit-stranger-danger-") && f.endsWith(".tgz")) {
+            if (f.startsWith(tarballPrefix) && f.endsWith(".tgz")) {
                 rmSync(join(root, f), { force: true });
             }
         }
