@@ -1,3 +1,4 @@
+import { VERSION } from "../shared/version.js";
 export function parseArgs(argv) {
     const args = argv.slice(2);
     let command = args[0] || "help";
@@ -69,7 +70,7 @@ export function parseArgs(argv) {
     return { command, positional, flags };
 }
 export const USAGE = `
-strangerDanger v0.2.0 — Secret and PII redaction guard
+strangerDanger v${VERSION} — Secret and PII redaction guard
 
 Usage: sd <command> [options]
 

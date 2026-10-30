@@ -1,6 +1,6 @@
 {
   "name": "@gitdamnit/opencode-stranger-danger",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Secret and PII redaction guard for AI coding agents — scans files, context windows, and outputs before secrets reach LLMs",
   "keywords": [
     "opencode",

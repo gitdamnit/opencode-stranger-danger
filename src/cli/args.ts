@@ -1,3 +1,5 @@
+import { VERSION } from "../shared/version.js";
+
 export interface CliArgs {
     command: string;
     positional: string[];
@@ -70,7 +72,7 @@ export function parseArgs(argv: string[]): CliArgs {
  }
 
 export const USAGE = `
-strangerDanger v0.2.0 — Secret and PII redaction guard
+strangerDanger v${VERSION} — Secret and PII redaction guard
 
 Usage: sd <command> [options]
 

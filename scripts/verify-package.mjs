@@ -47,6 +47,11 @@ try {
 
     const version = step("run `sd version`", () => run(bin, ["version"], { cwd: workdir })).trim();
     if (!/v\d+\.\d+\.\d+/.test(version)) throw new Error(`unexpected version output: ${version}`);
+    // The runtime VERSION constant is maintained separately from package.json, so
+    // assert they agree; a mismatch means the shipped CLI misreports its release.
+    if (!version.includes(`v${pkg.version}`)) {
+        throw new Error(`sd version reported ${JSON.stringify(version)} but package.json is ${pkg.version}`);
+    }
 
     step("run `sd rules`", () => {
         const out = run(bin, ["rules"], { cwd: workdir });

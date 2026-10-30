@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2 (2026-10-30)
+
+Version-reporting fix. `0.2.1` was functionally correct but shipped a stale
+`VERSION` constant, so `sd version`, the `sd_status` tool, and `sd --help`
+reported `0.2.0`.
+
+### Fixed
+- **`VERSION` now matches the published package.** `src/shared/version.ts` had
+  been left at `0.2.0` while `package.json` moved on; `sd --help` also hardcoded
+  the old string instead of using the constant.
+- **Packaging validation now asserts the exact version.** `verify:package`
+  compares `sd version` against `package.json`, and a unit test fails when
+  `VERSION` and `package.json` disagree, so the drift cannot ship again.
+
 ## 0.2.1 (2026-10-29)
 
 Packaging and npm-identity fix. The 0.2.0 source was distributed only as a
